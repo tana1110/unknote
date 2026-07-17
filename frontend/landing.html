@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Unknot — the notes app that thinks about your thoughts</title>
+  <meta name="description" content="Most notes apps store your thoughts. Unknot reads them back to you — honestly. It finds what you're assuming, where the logic bends, and what to try instead." />
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Lora:ital,wght@0,400;0,500;1,400&family=Amiri:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+  <style>
+    /* Same three colours as the app: #222222, #9E9D8A, #EAE9DE.
+       Charcoal/ivory also appear as low-alpha rgba for shadow and muted text. */
+    :root {
+      --charcoal: #222222;
+      --sage:     #9E9D8A;
+      --ivory:    #EAE9DE;
+
+      --shadow-soft:
+        0 1px 3px rgba(34,34,34,.05),
+        0 6px 18px rgba(34,34,34,.09);
+      --shadow-card:
+        0 2px 4px rgba(34,34,34,.03),
+        0 10px 24px rgba(34,34,34,.07),
+        0 34px 64px rgba(34,34,34,.12);
+      --shadow-lift:
+        0 4px 8px rgba(34,34,34,.06),
+        0 16px 36px rgba(34,34,34,.16);
+
+      --ease: cubic-bezier(.22,.61,.36,1);
+      --serif-brand: "Fraunces", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      --serif-body:  "Lora", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      --sans: -apple-system, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+      --gutter: clamp(20px, 5vw, 40px);
+      --section-y: clamp(64px, 9vw, 120px);
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0; color: var(--charcoal); font: 16px/1.6 var(--sans);
+      background:
+        radial-gradient(120% 90% at 50% 0%, rgba(234,233,222,.34) 0%, rgba(234,233,222,0) 55%),
+        radial-gradient(110% 100% at 50% 100%, rgba(34,34,34,.12) 0%, rgba(34,34,34,0) 55%),
+        var(--sage);
+      background-attachment: fixed;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+    body::before {
+      content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      opacity: .045; mix-blend-mode: soft-light;
+    }
+    .wrap { width: 100%; max-width: 1080px; margin: 0 auto; padding-inline: var(--gutter); position: relative; z-index: 1; }
+
+    /* ---------- nav ---------- */
+    .nav {
+      position: sticky; top: 0; z-index: 20;
+      padding: 16px 0;
+      backdrop-filter: blur(10px);
+      background: rgba(158,157,138,.72);
+      border-bottom: 1px solid rgba(34,34,34,0);
+      transition: border-color .3s var(--ease), background .3s var(--ease);
+    }
+    .nav.stuck { border-bottom-color: rgba(34,34,34,.12); background: rgba(158,157,138,.86); }
+    .nav .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; color: var(--charcoal); }
+    .mark {
+      width: 32px; height: 32px; border-radius: 10px; background: var(--charcoal);
+      display: grid; place-items: center; box-shadow: var(--shadow-soft); flex-shrink: 0;
+    }
+    .mark img { width: 23px; height: 23px; display: block; }
+    /* the mark replaces the old ✦ wherever the page says "unknot" */
+    .glyph-mark { width: 18px; height: 18px; display: block; flex-shrink: 0; }
+    .glyph-mark.tiny { width: 15px; height: 15px; display: inline-block; vertical-align: -3px; }
+    .brand span { font-family: var(--serif-brand); font-weight: 600; font-size: 22px; letter-spacing: -.015em; }
+
+    /* ---------- buttons ---------- */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+      background: var(--charcoal); color: var(--ivory); text-decoration: none;
+      border: 1.5px solid transparent; font: inherit; font-weight: 600; font-size: 15px;
+      padding: 13px 26px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+      box-shadow: 0 2px 6px rgba(34,34,34,.14);
+      transition: transform .3s var(--ease), box-shadow .3s var(--ease), border-color .3s var(--ease);
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(34,34,34,.22); border-color: var(--ivory); }
+    .btn:active { transform: translateY(0); }
+    .btn.small { padding: 10px 20px; font-size: 14px; }
+    .btn.ghost {
+      background: transparent; color: var(--charcoal);
+      border-color: rgba(34,34,34,.4); box-shadow: none; font-weight: 500;
+    }
+    .btn.ghost:hover { background: var(--charcoal); color: var(--ivory); border-color: var(--charcoal); }
+
+    /* ---------- hero ---------- */
+    .hero { padding: clamp(40px, 6vw, 72px) 0 var(--section-y); text-align: center; }
+    /* the mark says the whole thesis before a word is read */
+    .hero-mark {
+      width: min(430px, 82%); display: block; margin: 0 auto clamp(18px, 2.4vw, 26px);
+    }
+    .hero-mark svg, .hero-mark img { width: 100%; height: auto; display: block; }
+
+    /* The line draws itself: out of the tangle, across, into the calm circle.
+       It plays while you're reading the headline anyway — it costs no one a
+       single second of waiting. */
+    .hero-mark svg path { stroke-dasharray: 1; stroke-dashoffset: 1; }
+    .hero-mark.draw svg path { animation: draw-in 2.8s cubic-bezier(.33,.02,.24,1) forwards; }
+    @keyframes draw-in { to { stroke-dashoffset: 0; } }
+    .eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+      color: var(--charcoal); opacity: .55;
+      border: 1px solid rgba(34,34,34,.22); border-radius: 999px; padding: 7px 15px;
+      margin-bottom: clamp(22px, 3vw, 30px);
+    }
+    h1 {
+      font-family: var(--serif-brand); font-weight: 600;
+      font-size: clamp(38px, 6.4vw, 74px); line-height: 1.04; letter-spacing: -.028em;
+      margin: 0 auto; max-width: 15ch;
+    }
+    h1 em { font-style: italic; font-weight: 400; }
+    .lede {
+      font-family: var(--serif-body); font-size: clamp(17px, 1.6vw, 21px); line-height: 1.65;
+      opacity: .72; max-width: 54ch; margin: clamp(20px, 2.6vw, 28px) auto 0;
+    }
+    .cta-row {
+      display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;
+      margin-top: clamp(28px, 3.4vw, 38px);
+    }
+    .reassure { margin-top: 18px; font-size: 13.5px; opacity: .5; }
+
+    /* ---------- the honest note: problem statement ---------- */
+    .split {
+      display: grid; grid-template-columns: 1fr 1fr; gap: clamp(16px, 2.4vw, 26px);
+      align-items: stretch;
+    }
+    .panel {
+      background: var(--ivory); border-radius: 18px; padding: clamp(24px, 3vw, 34px);
+      box-shadow: var(--shadow-card);
+    }
+    .panel.quiet { background: rgba(234,233,222,.34); box-shadow: none; border: 1px dashed rgba(34,34,34,.24); }
+    .panel h3 {
+      margin: 0 0 14px; font-size: 11px; font-weight: 700; letter-spacing: .14em;
+      text-transform: uppercase; opacity: .5;
+    }
+    .panel .said { font-family: var(--serif-body); font-size: 16.5px; line-height: 1.7; margin: 0; }
+    .panel .said + .said { margin-top: 12px; opacity: .55; font-style: italic; }
+
+    /* ---------- section furniture ---------- */
+    section { padding: var(--section-y) 0; position: relative; z-index: 1; }
+    .section-head { text-align: center; max-width: 58ch; margin: 0 auto clamp(36px, 4.6vw, 56px); }
+    h2 {
+      font-family: var(--serif-brand); font-weight: 600;
+      font-size: clamp(28px, 3.6vw, 44px); line-height: 1.16; letter-spacing: -.02em; margin: 0;
+    }
+    .section-head p {
+      font-family: var(--serif-body); font-size: clamp(15.5px, 1.2vw, 18px);
+      opacity: .68; margin: 16px auto 0; line-height: 1.7;
+    }
+
+    /* ---------- three steps ---------- */
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(14px, 2vw, 22px); }
+    .step {
+      background: var(--ivory); border-radius: 18px; padding: clamp(24px, 2.6vw, 32px);
+      box-shadow: var(--shadow-soft); border: 1.5px solid transparent;
+      transition: transform .3s var(--ease), box-shadow .3s var(--ease);
+    }
+    .step:hover { transform: translateY(-4px); box-shadow: var(--shadow-lift); }
+    .step .n {
+      width: 32px; height: 32px; border-radius: 10px; background: var(--charcoal); color: var(--ivory);
+      display: grid; place-items: center; font-size: 13px; font-weight: 700; margin-bottom: 16px;
+    }
+    .step h4 { margin: 0 0 8px; font-family: var(--serif-brand); font-weight: 600; font-size: 19px; letter-spacing: -.01em; }
+    .step p { margin: 0; font-size: 15px; line-height: 1.65; opacity: .68; }
+
+    /* ---------- the real output preview ---------- */
+    .demo {
+      background: var(--ivory); border-radius: 20px; box-shadow: var(--shadow-card);
+      overflow: hidden; max-width: 780px; margin: 0 auto;
+    }
+    .demo-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      padding: 15px clamp(18px, 2.4vw, 28px); border-bottom: 1px solid rgba(34,34,34,.09);
+    }
+    .demo-head .meta { font-size: 12.5px; opacity: .5; }
+    .fake-tabs { display: flex; gap: 3px; background: rgba(34,34,34,.07); padding: 3px; border-radius: 10px; }
+    .fake-tabs span {
+      font-size: 13px; font-weight: 600; padding: 6px 13px; border-radius: 8px; opacity: .55; white-space: nowrap;
+    }
+    .fake-tabs span.on { background: var(--ivory); opacity: 1; box-shadow: 0 1px 3px rgba(34,34,34,.14); }
+    .demo-body { padding: clamp(22px, 2.8vw, 32px) clamp(20px, 3vw, 38px) clamp(26px, 3vw, 36px); }
+    .verdict {
+      background: var(--sage); border-left: 4px solid var(--charcoal);
+      padding: 15px 18px; border-radius: 12px; font-family: var(--serif-body);
+      font-size: 15.5px; line-height: 1.6;
+    }
+    .demo-body h5 {
+      margin: 24px 0 8px; font-size: 10.5px; font-weight: 700; letter-spacing: .14em;
+      text-transform: uppercase; opacity: .45;
+    }
+    .demo-body p { margin: 0; font-size: 15.5px; line-height: 1.68; opacity: .9; }
+    .demo-body ul { margin: 0; padding-left: 19px; }
+    .demo-body li { margin: 7px 0; font-size: 15.5px; line-height: 1.62; opacity: .9; }
+    .demo-body li::marker { opacity: .5; }
+    .demo-note {
+      text-align: center; font-family: var(--serif-body); font-style: italic;
+      opacity: .55; font-size: 14.5px; margin: 20px auto 0; max-width: 52ch;
+    }
+
+    /* ---------- why / trust ---------- */
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(14px, 2vw, 22px); }
+    .card {
+      background: rgba(234,233,222,.36); border: 1px solid rgba(34,34,34,.14);
+      border-radius: 16px; padding: clamp(20px, 2.4vw, 28px);
+      transition: background .3s var(--ease), transform .3s var(--ease);
+    }
+    .card:hover { background: var(--ivory); transform: translateY(-3px); }
+    .card .ico { font-size: 19px; margin-bottom: 12px; opacity: .75; }
+    .card h4 { margin: 0 0 7px; font-family: var(--serif-brand); font-weight: 600; font-size: 17.5px; }
+    .card p { margin: 0; font-size: 14.5px; line-height: 1.65; opacity: .68; }
+
+    /* ---------- closing ---------- */
+    .closing { text-align: center; }
+    .closing .btn { margin-top: 30px; }
+    .closing .pull {
+      font-family: var(--serif-brand); font-weight: 400; font-style: italic;
+      font-size: clamp(24px, 3.4vw, 40px); line-height: 1.35; letter-spacing: -.015em;
+      max-width: 22ch; margin: 0 auto;
+    }
+
+    footer {
+      border-top: 1px solid rgba(34,34,34,.14); padding: 30px 0 40px;
+      position: relative; z-index: 1;
+    }
+    footer .wrap { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+    footer p { margin: 0; font-size: 13.5px; opacity: .5; }
+    footer a { color: var(--charcoal); text-decoration: none; font-size: 13.5px; opacity: .65; font-weight: 600; }
+    footer a:hover { opacity: 1; }
+
+    /* ---------- gentle arrival on scroll ---------- */
+    .rise { opacity: 0; transform: translateY(16px); transition: opacity .7s var(--ease), transform .7s var(--ease); }
+    .rise.in { opacity: 1; transform: none; }
+
+    /* ---------- responsive ---------- */
+    @media (max-width: 860px) {
+      .steps, .cards { grid-template-columns: 1fr; }
+      .split { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 560px) {
+      .nav .btn { padding: 9px 16px; font-size: 13.5px; }
+      .brand span { font-size: 20px; }
+      .cta-row .btn { width: 100%; }
+      .demo-head .meta { display: none; }
+      .demo-head { justify-content: center; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      * { transition: none !important; }
+      .rise { opacity: 1; transform: none; }
+      .btn:hover, .step:hover, .card:hover { transform: none; }
+    }
+
+    /* Arabic: Amiri serif, a touch more line-height, no letter-spacing (it
+       breaks Arabic joins). The layout mirrors via dir="rtl" on <html>. */
+    :root[lang="ar"] {
+      --serif-brand: "Amiri", "Noto Naskh Arabic", Georgia, serif;
+      --serif-body:  "Amiri", "Noto Naskh Arabic", Georgia, serif;
+      --sans: "Amiri", -apple-system, "Segoe UI", Tahoma, sans-serif;
+    }
+    :root[lang="ar"] h1, :root[lang="ar"] h2 { letter-spacing: 0; line-height: 1.25; }
+    :root[lang="ar"] .lede, :root[lang="ar"] .panel .said,
+    :root[lang="ar"] .demo-body p, :root[lang="ar"] .demo-body li { line-height: 1.9; }
+    :root[lang="ar"] .eyebrow, :root[lang="ar"] .panel h3,
+    :root[lang="ar"] .demo-body h5 { letter-spacing: 0; }
+    /* the language toggle in the nav */
+    .langtoggle {
+      background: transparent; border: 1px solid rgba(34,34,34,.28); color: var(--charcoal);
+      border-radius: 999px; padding: 8px 16px; font: inherit; font-size: 13.5px; font-weight: 600;
+      cursor: pointer; margin-inline-end: 10px;
+      transition: background .25s var(--ease), color .25s var(--ease), border-color .25s var(--ease);
+    }
+    .langtoggle:hover { background: var(--charcoal); color: var(--ivory); border-color: var(--charcoal); }
+    .nav .wrap .navright { display: flex; align-items: center; }
+  </style>
+</head>
+<body>
+
+  <nav class="nav" id="nav">
+    <div class="wrap">
+      <a class="brand" href="/"><span class="mark" aria-hidden="true"><img src="/logo-mark-ivory.svg" alt=""></span><span>Unknot</span></a>
+      <div class="navright">
+        <button class="langtoggle" id="lang" data-ar="English">العربية</button>
+        <a class="btn small" href="/app" data-ar="افتح التطبيق">Open the app</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="wrap">
+      <div class="hero-mark rise" id="hero-mark" role="img" aria-label="A tangled scribble unwinding into a single calm circle"></div>
+      <div class="eyebrow rise" data-ar="ملاحظات تفكّر معك">Notes that think back</div>
+      <h1 class="rise" data-ar="أفكارك تستحق أكثر من مجرّد &lt;em&gt;التخزين&lt;/em&gt;.">Your thoughts deserve more than <em>storage</em>.</h1>
+      <p class="lede rise" data-ar="كل تطبيق ملاحظات مجرّد دُرج. تكتب الفكرة التي تدور في رأسك، فتبقى هناك، ولا شيء يتغيّر. أمّا Unknot فيقرؤها لك من جديد — برفقٍ لكن بصدق — ويريك العقدة التي لم تكن تراها من الداخل.">
+        Every notes app is a drawer. You write the thing that's been circling your
+        head, it sits there, and nothing changes. Unknot reads it back to you —
+        gently, but honestly — and shows you the knot you couldn't see from inside it.
+      </p>
+      <div class="cta-row rise">
+        <a class="btn" href="/app" data-ar='&lt;img class="glyph-mark" src="/logo-mark-ivory.svg" alt=""&gt; ابدأ الكتابة'><img class="glyph-mark" src="/logo-mark-ivory.svg" alt=""> Start writing</a>
+        <a class="btn ghost" href="#how" data-ar="كيف يعمل">See how it works</a>
+      </div>
+      <p class="reassure rise" data-ar="مجاني · بلا حساب · ملاحظاتك تبقى على جهازك">Free · No account · Your notes stay on your own machine</p>
+    </div>
+  </header>
+
+  <!-- THE WHY -->
+  <section id="why">
+    <div class="wrap">
+      <div class="section-head rise">
+        <h2 data-ar="المشكلة لم تكن يوماً في التذكّر.">The problem was never remembering.</h2>
+        <p data-ar="أنت تعرف ما تفكّر فيه أصلاً. ما لا تراه هو الافتراض الذي يسند فكرتك — الذي لا تقوله بصوتٍ عالٍ، لأنه بالنسبة إليك يبدو كأنه الحقيقة.">
+          You already know what you think. What you can't see is the assumption
+          holding it up — the one you'd never say out loud, because to you it just
+          looks like the truth.
+        </p>
+      </div>
+      <div class="split">
+        <div class="panel quiet rise">
+          <h3 data-ar="أي تطبيق ملاحظات آخر">Every other notes app</h3>
+          <p class="said" data-ar="«يجب أن أترك وظيفتي وأتفرّغ لهذا تماماً.»">"I should quit my job and go all in on this."</p>
+          <p class="said" data-ar="حُفظت. ٣:٤٢ مساءً.">Saved. 3:42 PM.</p>
+        </div>
+        <div class="panel rise">
+          <h3>Unknot</h3>
+          <p class="said" data-ar="«يجب أن أترك وظيفتي وأتفرّغ لهذا تماماً.»">"I should quit my job and go all in on this."</p>
+          <p class="said" style="opacity:.9;font-style:normal" data-ar="«أنت تفترض أن مدخرات ثمانية أشهر تعني ثمانية أشهر من الأمان — لكن هذا يصحّ فقط إن لم يحدث أي خطأ، وشيءٌ ما يحدث دائماً. ماذا ستفعل في الشهر السادس بلا أي تقدّم؟»">
+            "You're assuming eight months of savings equals eight months of runway —
+            but that only holds if nothing goes wrong, and something always does.
+            What would you do at month six with no traction?"
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW -->
+  <section id="how">
+    <div class="wrap">
+      <div class="section-head rise">
+        <h2 data-ar="ثلاث خطوات. بلا تعقيد.">Three steps. No learning curve.</h2>
+        <p data-ar="هو تطبيق ملاحظات أولاً. والتفكير حاضرٌ حين تريده — ولا يعترض طريقك حين لا تريده.">It's a notes app first. The thinking is there when you want it — never in your way when you don't.</p>
+      </div>
+      <div class="steps">
+        <div class="step rise">
+          <div class="n">١</div>
+          <h4 data-ar="اكتبها">Write it down</h4>
+          <p data-ar="قلقٌ، أو خطة، أو فكرة نصف مكتملة في الثانية صباحاً. بلا قوالب ولا حقول تملؤها. تُحفظ وحدها أثناء كتابتك.">A worry, a plan, a half-formed idea at 2am. No structure, no prompts to fill in. It saves itself as you type.</p>
+        </div>
+        <div class="step rise">
+          <div class="n">٢</div>
+          <h4 data-ar='اضغط &lt;img class="glyph-mark tiny" src="/logo-mark.svg" alt=""&gt; فكّ العقدة'>Tap <img class="glyph-mark tiny" src="/logo-mark.svg" alt=""> Unknot</h4>
+          <p data-ar="حين تكون مستعداً فقط. بعض الملاحظات مجرّد ملاحظات — وتلك تبقى كما تركتها تماماً.">Only when you're ready. Some notes are just notes — those stay exactly as you left them.</p>
+        </div>
+        <div class="step rise">
+          <div class="n">٣</div>
+          <h4 data-ar="استمع لها تُقرأ عليك">Get read back</h4>
+          <p data-ar="ملاحظتك، مفهومةً — مع ما تفترضه، وأين تتعثّر، وما هو قويٌّ فعلاً، وما الذي يستحقّ التجربة بدلاً منه.">Your note, understood — plus what you're assuming, where it bends, what's genuinely strong, and what to try instead.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WHAT YOU ACTUALLY GET -->
+  <section id="see">
+    <div class="wrap">
+      <div class="section-head rise">
+        <h2 data-ar="هذا ما يعطيك إيّاه في المقابل.">This is what it gives you back.</h2>
+        <p data-ar="ليس تلخيصاً لما كتبت. أنت كنت هناك. أنت تعرف ما كتبت.">Not a summary of what you wrote. You were there. You know what you wrote.</p>
+      </div>
+
+      <div class="demo rise">
+        <div class="demo-head">
+          <span class="meta" data-ar="عُدّلت ٣:٢٥ مساءً · مفكوكة">Edited 3:25 PM · unknotted</span>
+          <div class="fake-tabs" aria-hidden="true"><span data-ar="ملاحظة">Note</span><span class="on"><img class="glyph-mark tiny" src="/logo-mark.svg" alt=""> <span data-ar="فكّ العقدة">Unknot</span></span></div>
+        </div>
+        <div class="demo-body">
+          <div class="verdict" data-ar="حدسك صحيح، لكن جدولك الزمني هو من يجادل نيابةً عنك. الفكرة تستحقّ البناء — الإطلاق خلال ستة أسابيع هو الجزء الذي سيؤذيك.">
+            Your instinct is right, but your timeline is doing the arguing for you.
+            The idea is worth building — the six-week launch is the part that will hurt you.
+          </div>
+
+          <h5 data-ar="ما أفهمه منك">Here's what I'm hearing</h5>
+          <p data-ar="بنيتَ شيئاً تؤمن به، وأكّده لك بضعة أشخاص، والآن صار الانتظار أثقل من المخاطرة.">You've built something you believe in, a few people confirmed it, and now the waiting feels heavier than the risk.</p>
+
+          <h5 data-ar="ما قد تفترضه دون أن تنتبه">What you might be assuming</h5>
+          <ul>
+            <li data-ar="أنّ «الجميع قال إنها رائعة» هي نفس إشارة «أحدهم سيدفع مقابلها».">That "everyone said it was cool" is the same signal as "someone would pay for this."</li>
+            <li data-ar="أنّ التفرّغ الكامل يزيل العائق — بينما العائق قد يكون التوزيع، لا عدد الساعات.">That going full-time removes the obstacle — when the obstacle might be distribution, not hours.</li>
+          </ul>
+
+          <h5 data-ar="أين أخالفك برفق">Where I'd gently push back</h5>
+          <ul>
+            <li data-ar="عشرة آلاف مستخدم في الشهر الأول من تيك توك ليست خطة، بل أمنية مرفقة برقم.">Ten thousand users in month one from TikTok isn't a plan, it's a hope with a number attached.</li>
+          </ul>
+
+          <h5 data-ar="ما هو جيّد فعلاً">What's genuinely working</h5>
+          <ul>
+            <li data-ar="أطلقتَ نموذجاً أوّلياً في عطلتَي نهاية أسبوع. هذا دليلٌ حقيقيّ عنك أنت، لا عن الفكرة فقط.">You shipped a prototype in two weekends. That's real evidence about you, not just the idea.</li>
+          </ul>
+
+          <h5 data-ar="ما أقترح تجربته">What I'd try instead</h5>
+          <p data-ar="ابقَ في وظيفتك ثمانية أسابيع أخرى، وحاول أن تجد عشرين طالباً يستخدمونه أسبوعياً. إن لم تجد عشرين وأنت موظّف، فالتفرّغ لن يحلّ ذلك — بل سيجعل تعلّمه أغلى ثمناً.">Keep the job for eight more weeks and try to find twenty students who'll use it weekly. If you can't find twenty while employed, full-time won't fix that — it'll just make it more expensive to learn.</p>
+        </div>
+      </div>
+      <p class="demo-note" data-ar="مثال على نوع القراءة التي تحصل عليها — وليست ملاحظة حقيقية.">An example of the kind of read-back you get — not a real note.</p>
+    </div>
+  </section>
+
+  <!-- WHY TRUST IT -->
+  <section id="trust">
+    <div class="wrap">
+      <div class="section-head rise">
+        <h2 data-ar="لن يوافقك فحسب.">It won't just agree with you.</h2>
+        <p data-ar="يبدو هذا أمراً صغيراً. لكنه هو كل شيء. الأداة التي تجاملك أسوأ من عدم وجود أداة أصلاً — فهي تزيدك ثقةً في الأجزاء التي يجب أن تشكّ فيها بالضبط.">
+          That sounds like a small thing. It's the whole thing. A tool that flatters
+          you is worse than no tool at all — it makes you more confident about
+          exactly the parts you should be questioning.
+        </p>
+      </div>
+      <div class="cards">
+        <div class="card rise">
+          <h4 data-ar="صادق بالتصميم">Honest by design</h4>
+          <p data-ar="بُني ليجد المفصل الضعيف، لا ليمدحك. وحين يكون شيءٌ قوياً فعلاً يقولها — وهذا ما يجعل المديح يستحقّ.">It's built to find the weak joint, not to praise you. When something is genuinely strong it says so — and that's what makes the praise worth having.</p>
+        </div>
+        <div class="card rise">
+          <h4 data-ar="ملكك، على جهازك">Yours, on your machine</h4>
+          <p data-ar="بلا حساب ولا تسجيل ولا مزامنة. ملاحظاتك تعيش في ملفٍّ على حاسوبك أنت. وحين تفكّ عقدة إحداها، يُرسَل نصّ تلك الملاحظة إلى النموذج ليُقرأ — ولا شيء غير ذلك.">No account, no sign-up, no sync. Your notes live in a file on your own computer. When you unknot one, that note's text is sent to the AI model to be read — nothing else is.</p>
+        </div>
+        <div class="card rise">
+          <h4 data-ar="هادئ عن قصد">Quiet on purpose</h4>
+          <p data-ar="بلا سلاسل إنجاز ولا أوسمة ولا إشعارات تسألك أين كنت. إنها غرفةٌ هادئة، وهي هنا حين تحتاجها.">No streaks, no badges, no notifications asking where you've been. It's a calm room, and it's there when you need it.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CLOSING -->
+  <section class="closing">
+    <div class="wrap">
+      <p class="pull rise" data-ar="بعض الأفكار لا تحتاج إلى حفظ. بل إلى فكّ عقدتها.">Some thoughts don't need saving. They need untangling.</p>
+      <div class="rise"><a class="btn" href="/app" data-ar='&lt;img class="glyph-mark" src="/logo-mark-ivory.svg" alt=""&gt; ابدأ الكتابة'><img class="glyph-mark" src="/logo-mark-ivory.svg" alt=""> Start writing</a></div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <p data-ar="Unknot — مكانٌ هادئ للأفكار التي تتشابك.">Unknot — a quiet place for the thoughts that tangle up.</p>
+      <a href="/app" data-ar="افتح التطبيق ←">Open the app →</a>
+    </div>
+  </footer>
+
+  <script>
+    /* Inline the hero mark so its stroke can be animated (an <img> can't be).
+       If the fetch ever fails, fall back to the plain image — the page should
+       never lose its logo over a flourish. */
+    (async () => {
+      const host = document.getElementById("hero-mark");
+      const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+      try {
+        host.innerHTML = await fetch("/logo-wide.svg").then(r => {
+          if (!r.ok) throw new Error(r.status);
+          return r.text();
+        });
+        if (!still) requestAnimationFrame(() => host.classList.add("draw"));
+        else host.querySelector("path").style.strokeDashoffset = "0";
+      } catch {
+        host.innerHTML = '<img src="/logo-wide.svg" alt="">';
+      }
+    })();
+
+    /* ---------- language ----------
+       Every translatable block carries its Arabic in data-ar. We cache the
+       original English innerHTML once, then swap in place and flip the
+       document to RTL. Follows the browser unless the visitor chose. */
+    const LANG_KEY = "unknot-lang";
+    const i18nEls = [...document.querySelectorAll("[data-ar]")];
+    i18nEls.forEach(el => { el.dataset.en = el.innerHTML; });
+
+    function applyLangLanding(l) {
+      const ar = l === "ar";
+      document.documentElement.lang = ar ? "ar" : "en";
+      document.documentElement.dir = ar ? "rtl" : "ltr";
+      i18nEls.forEach(el => { el.innerHTML = ar ? el.dataset.ar : el.dataset.en; });
+    }
+
+    (function initLang() {
+      let saved = null;
+      try { saved = localStorage.getItem(LANG_KEY); } catch (e) {}
+      const start = saved || ((navigator.language || "en").toLowerCase().startsWith("ar") ? "ar" : "en");
+      applyLangLanding(start);
+      document.getElementById("lang").addEventListener("click", () => {
+        const next = document.documentElement.lang === "ar" ? "en" : "ar";
+        try { localStorage.setItem(LANG_KEY, next); } catch (e) {}
+        applyLangLanding(next);
+      });
+    })();
+
+    // shadow the nav only once you've left the top
+    const nav = document.getElementById("nav");
+    const onScroll = () => nav.classList.toggle("stuck", window.scrollY > 8);
+    onScroll();
+    addEventListener("scroll", onScroll, { passive: true });
+
+    // Let each block arrive gently — but never leave one stranded.
+    // A sweep (not an IntersectionObserver) reveals anything at or above the
+    // fold, so jumping to the bottom or deep-linking can't skip a section and
+    // leave it invisible forever.
+    const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    let pending = [...document.querySelectorAll(".rise")];
+
+    if (calm) {
+      pending.forEach(el => el.classList.add("in"));
+    } else {
+      let queued = false;
+      const sweep = () => {
+        queued = false;
+        const fold = window.innerHeight * .92;
+        pending = pending.filter(el => {
+          if (el.getBoundingClientRect().top >= fold) return true;   // still below — wait
+          const sibs = [...el.parentElement.children].filter(c => c.classList.contains("rise"));
+          el.style.transitionDelay = Math.min(sibs.indexOf(el), 4) * 80 + "ms";
+          el.classList.add("in");
+          return false;
+        });
+      };
+      const schedule = () => { if (!queued) { queued = true; requestAnimationFrame(sweep); } };
+      addEventListener("scroll", schedule, { passive: true });
+      addEventListener("resize", schedule);
+      addEventListener("load", schedule);
+      sweep();
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,1819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Unknot</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+
+  <!-- Set the theme BEFORE first paint. Doing this in the main script would
+       flash a bright sage page at someone opening the app at 2am. -->
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem("unknot-theme");
+        document.documentElement.dataset.theme = saved
+          || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      } catch (e) { document.documentElement.dataset.theme = "light"; }
+    })();
+  </script>
+
+  <!-- Warm serif for the brand + a gentle serif for writing. System serifs
+       are the fallback if these don't load, so it looks right offline too. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Amiri is the Arabic half of the type system. Fraunces and Lora contain no
+       Arabic glyphs at all, so without this an Arabic note falls back to
+       whatever the OS has — and the warm, literary feel dies at the border. -->
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Lora:ital,wght@0,400;0,500;1,400&family=Amiri:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+  <style>
+    /* ---- Palette: only #222222, #9E9D8A, #EAE9DE (charcoal & ivory also
+       appear as low-alpha rgba for soft shadows, glow, and muted text —
+       same three hues, no fourth color). 60-30-10: sage / ivory / charcoal. */
+    :root {
+      --charcoal: #222222;
+      --sage:     #9E9D8A;
+      --ivory:    #EAE9DE;
+
+      /* Semantic roles, so one flip changes the whole app. Still only the
+         three colours — dark mode is the SAME palette with ink and paper
+         swapped, not a fourth colour scheme. */
+      --ground:  var(--sage);        /* the page behind everything */
+      --surface: var(--ivory);       /* paper: cards, the note itself */
+      --ink:     var(--charcoal);    /* text and lines */
+      --ink-a:   34, 34, 34;         /* the ink, for borders/muted text alphas */
+      --btn-bg:  var(--charcoal);    /* primary button */
+      --btn-fg:  var(--ivory);
+      --glow:    rgba(234,233,222,.30);
+      --shade:   rgba(var(--ink-a),.13);
+
+      /* Shadows stay charcoal in BOTH themes — a shadow is an absence of
+         light, not ink. Tying them to --ink-a would turn them into ivory
+         glows the moment the theme flips. */
+      --shadow-page:
+        0 2px 4px rgba(34,34,34,.03),
+        0 10px 24px rgba(34,34,34,.07),
+        0 34px 64px rgba(34,34,34,.12);
+      --shadow-note:
+        0 1px 3px rgba(34,34,34,.05),
+        0 6px 18px rgba(34,34,34,.09);
+      --shadow-lift:
+        0 4px 8px rgba(34,34,34,.06),
+        0 16px 36px rgba(34,34,34,.16);
+
+      --ease: cubic-bezier(.22,.61,.36,1);
+
+      --serif-brand: "Fraunces", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      --serif-body:  "Lora", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+      --sans: -apple-system, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+      /* fluid rhythm — every gap/pad scales with the viewport instead of
+         snapping at breakpoints, so there is no "in-between" broken size */
+      --pad-shell: clamp(14px, 2.6vw, 36px);
+      --pad-page:  clamp(20px, 3.4vw, 44px);
+      --gap-shell: clamp(14px, 2.2vw, 32px);
+    }
+
+    /* Dark: charcoal becomes the ground, ivory becomes the ink. The surface is
+       charcoal lifted with a little ivory, so even the paper is still made of
+       the same two colours. Sage stays the accent in both. */
+    :root[data-theme="dark"] {
+      --ground:  var(--charcoal);
+      --surface: color-mix(in srgb, var(--ivory) 8%, var(--charcoal));
+      --ink:     var(--ivory);
+      --ink-a:   234, 233, 222;
+      --btn-bg:  var(--ivory);
+      --btn-fg:  var(--charcoal);
+      --glow:    rgba(234,233,222,.07);
+      --shade:   rgba(34,34,34,.5);   /* still charcoal — never pure black */
+    }
+
+    /* Arabic gets its own serif. Amiri is a Naskh face — the same warm,
+       literary register Fraunces/Lora carry in Latin, rather than a generic
+       system fallback. Arabic also needs a little more size and line-height:
+       the script is denser and its diacritics need somewhere to live. */
+    :root[lang="ar"] {
+      --serif-brand: "Amiri", "Noto Naskh Arabic", "Traditional Arabic", Georgia, serif;
+      --serif-body:  "Amiri", "Noto Naskh Arabic", "Traditional Arabic", Georgia, serif;
+      --sans: "Amiri", -apple-system, "Segoe UI", Tahoma, sans-serif;
+    }
+    :root[lang="ar"] textarea,
+    :root[lang="ar"] .unknot-body,
+    :root[lang="ar"] .thread .pat,
+    :root[lang="ar"] .verdict { line-height: 1.9; }
+    :root[lang="ar"] .listhead { letter-spacing: 0; }   /* letter-spacing breaks Arabic joins */
+    :root[lang="ar"] section h3,
+    :root[lang="ar"] .thread h4 { letter-spacing: 0; font-size: 12px; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; height: 100%; }
+
+    body {
+      color: var(--ink);
+      font: 16px/1.5 var(--sans);
+      background:
+        radial-gradient(135% 115% at 50% 16%, var(--glow) 0%, transparent 54%),
+        radial-gradient(120% 120% at 50% 112%, var(--shade) 0%, transparent 56%),
+        var(--ground);
+      background-attachment: fixed;
+      overflow: hidden;                                  /* panes scroll, never the page */
+      -webkit-font-smoothing: antialiased;
+    }
+    /* barely-there paper grain, so the sage feels alive rather than flat */
+    body::before {
+      content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      opacity: .045; mix-blend-mode: soft-light;
+    }
+
+    /* ---------- launch screen ---------- */
+    .splash {
+      position: fixed; inset: 0; z-index: 60;
+      display: grid; place-items: center;
+      background:
+        radial-gradient(120% 100% at 50% 40%, var(--glow) 0%, transparent 58%),
+        var(--ground);
+      transition: opacity .42s var(--ease), visibility .42s var(--ease);
+    }
+    /* pointer-events goes first and instantly: `visibility` only flips at the
+       END of its transition, so for ~0.4s the faded splash still swallowed
+       every click. Invisible things must never be clickable. */
+    .splash.done { opacity: 0; visibility: hidden; pointer-events: none; }
+    .splash-mark { width: min(300px, 62vw); }
+    .splash-mark svg { width: 100%; height: auto; display: block; }
+    /* the knot resolving into the circle — the whole idea, in about a second */
+    .splash-mark svg path { stroke: var(--ink); stroke-dasharray: 1; stroke-dashoffset: 1; }
+    .splash-mark.draw svg path { animation: splash-draw .95s cubic-bezier(.4,.03,.2,1) forwards; }
+    @keyframes splash-draw { to { stroke-dashoffset: 0; } }
+    @media (prefers-reduced-motion: reduce) {
+      .splash-mark svg path { stroke-dashoffset: 0; }
+      .splash-mark.draw svg path { animation: none; }
+    }
+
+    /* ---------- shell ----------
+       100dvh (not vh) so mobile browser chrome can't crop the footer.
+       minmax(0,…) on both tracks is what lets children actually scroll. */
+    .app {
+      position: relative; z-index: 1;
+      display: grid;
+      grid-template-columns: clamp(240px, 24vw, 330px) minmax(0, 1fr);
+      gap: var(--gap-shell);
+      height: 100dvh;
+      max-width: 1500px;
+      margin: 0 auto;
+      padding: var(--pad-shell);
+      padding-left:  max(var(--pad-shell), env(safe-area-inset-left));
+      padding-right: max(var(--pad-shell), env(safe-area-inset-right));
+      padding-bottom: max(var(--pad-shell), env(safe-area-inset-bottom));
+    }
+
+    /* ---------- sidebar: the notes list ---------- */
+    .sidebar { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+    .brand {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding: 0 2px;
+      text-decoration: none; color: var(--ink); flex-shrink: 0;
+      transition: opacity .25s var(--ease);
+    }
+    .brand:hover { opacity: .72; }
+    /* the tile inverts with the theme, and the mark inside inverts with it */
+    .brand .mark {
+      width: 34px; height: 34px; border-radius: 11px;
+      background: var(--ink); color: var(--surface);
+      box-shadow: var(--shadow-note); display: grid; place-items: center; flex-shrink: 0;
+    }
+    .brand .mark .mark-icon { width: 24px; height: 24px; }
+
+    /* The mark is drawn as a MASK, not an <img>: CSS cannot recolour an image,
+       so in dark mode a charcoal logo would sit invisibly on a charcoal
+       ground. As a mask it takes `currentColor` — the colour of whatever it
+       sits inside — so one file works on every surface, in both themes. */
+    .mark-icon {
+      display: block; flex-shrink: 0; background: currentColor;
+      -webkit-mask: url("/logo-mark.svg") center / contain no-repeat;
+              mask: url("/logo-mark.svg") center / contain no-repeat;
+    }
+    /* the mark stands in for the old ✦ everywhere the app says "unknot" */
+    .glyph-mark { width: 17px; height: 17px; }
+    .glyph-mark.tiny { width: 13px; height: 13px; display: inline-block; vertical-align: -2px; }
+    .brand h1 {
+      margin: 0; font-family: var(--serif-brand); font-weight: 600;
+      font-size: clamp(23px, 2.2vw, 27px); letter-spacing: -0.015em; line-height: 1;
+    }
+
+    .newbtn {
+      width: 100%; background: var(--btn-bg); color: var(--btn-fg);
+      border: 1.5px solid transparent; font: inherit; font-weight: 600; font-size: 14.5px;
+      padding: 12px 18px; border-radius: 12px; cursor: pointer; margin-bottom: 12px;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      box-shadow: 0 2px 6px rgba(34,34,34,.14); flex-shrink: 0;
+      transition: transform .3s var(--ease), box-shadow .3s var(--ease), border-color .3s var(--ease);
+    }
+    .newbtn:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(34,34,34,.22); border-color: var(--surface); }
+    .newbtn:active { transform: translateY(0); }
+
+    /* Quieter than New note on purpose: writing comes first, looking back
+       second. But it's the one thing no other notes app can offer. */
+    .threadsbtn {
+      width: 100%; background: transparent; color: var(--ink);
+      border: 1.5px solid rgba(var(--ink-a),.32); border-radius: 12px;
+      font: inherit; font-weight: 500; font-size: 14px;
+      padding: 10px 16px; cursor: pointer; margin-bottom: 14px; flex-shrink: 0;
+      transition: background .25s var(--ease), color .25s var(--ease), border-color .25s var(--ease);
+    }
+    .threadsbtn:hover { background: var(--btn-bg); color: var(--btn-fg); border-color: var(--ink); }
+    .threadsbtn:disabled { opacity: .45; cursor: default; background: transparent; color: var(--ink); border-color: rgba(var(--ink-a),.32); }
+
+    /* ---------- what keeps coming up ---------- */
+    .sheet-over {
+      position: fixed; inset: 0; z-index: 40; display: none;
+      background: rgba(var(--ink-a),.42); backdrop-filter: blur(3px);
+      padding: clamp(14px, 4vh, 48px);
+      place-items: center;
+    }
+    .sheet-over.open { display: grid; }
+    .sheet-card {
+      background: var(--surface); border-radius: 20px; box-shadow: var(--shadow-page);
+      width: min(760px, 100%); max-height: 100%; display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .sheet-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      padding: 18px clamp(18px, 3vw, 34px); border-bottom: 1px solid rgba(var(--ink-a),.09);
+      flex-shrink: 0;
+    }
+    .sheet-head h2 {
+      margin: 0; font-family: var(--serif-brand); font-weight: 600;
+      font-size: clamp(19px, 2vw, 23px); letter-spacing: -.01em;
+    }
+    .sheet-head .sub { font-size: 12.5px; opacity: .5; margin-top: 3px; }
+    .sheet-body {
+      overflow-y: auto; overscroll-behavior: contain; min-height: 0;
+      padding: clamp(20px, 2.6vw, 30px) clamp(18px, 3vw, 34px) clamp(26px, 3vw, 34px);
+    }
+    .thread { padding: 20px 0; border-bottom: 1px solid rgba(var(--ink-a),.1); }
+    .thread:first-child { padding-top: 4px; }
+    .thread:last-child { border-bottom: 0; padding-bottom: 6px; }
+    .thread .pat {
+      font-family: var(--serif-body); font-size: 17.5px; line-height: 1.55; margin: 0 0 12px;
+    }
+    .thread h4 {
+      margin: 0 0 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .14em;
+      text-transform: uppercase; opacity: .45;
+    }
+    .thread ul { margin: 0 0 14px; padding-inline-start: 18px; }
+    .thread li { margin: 5px 0; font-size: 14.5px; line-height: 1.55; opacity: .8; }
+    .thread .nudge {
+      background: var(--sage); border-inline-start: 4px solid var(--charcoal);
+      padding: 12px 15px; border-radius: 10px; font-size: 15px; line-height: 1.55;
+      font-family: var(--serif-body);
+    }
+    .sheet-closing {
+      margin: 22px 0 0; font-family: var(--serif-body); font-style: italic;
+      font-size: 16px; line-height: 1.65; opacity: .75;
+    }
+
+    .search {
+      width: 100%; background: rgba(234,233,222,.45); color: var(--ink);
+      border: 1px solid rgba(var(--ink-a),.12); border-radius: 11px; flex-shrink: 0;
+      padding: 10px 14px; font: inherit; font-size: 16px; outline: 0; margin-bottom: 16px;
+      transition: background .25s var(--ease), border-color .25s var(--ease);
+    }
+    .search::placeholder { color: var(--ink); opacity: .45; }
+    .search:focus { background: var(--surface); border-color: rgba(var(--ink-a),.3); }
+
+    .listtop {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+      margin: 0 2px 12px; flex-shrink: 0;
+    }
+    .listhead {
+      color: var(--ink); opacity: .5; font-size: 11px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .16em;
+    }
+    /* the Recent / Topics toggle — the app's segmented-control language, small */
+    .sorttabs { display: flex; gap: 2px; background: rgba(var(--ink-a),.07); padding: 2px; border-radius: 8px; }
+    .sorttab {
+      background: transparent; border: 0; cursor: pointer; font: inherit;
+      font-size: 11.5px; font-weight: 600; color: var(--ink); opacity: .55;
+      padding: 4px 10px; border-radius: 6px; white-space: nowrap;
+      transition: background .2s var(--ease), opacity .2s var(--ease), box-shadow .2s var(--ease);
+    }
+    .sorttab:hover { opacity: .85; }
+    .sorttab.active { background: var(--surface); opacity: 1; box-shadow: 0 1px 2px rgba(34,34,34,.14); }
+    /* the star tab carries the mark, so it reads as the special one */
+    .sorttab.star { display: inline-flex; align-items: center; gap: 5px; }
+    .sorttab.star .glyph-mark { width: 12px; height: 12px; }
+
+    /* a topic group heading inside the list */
+    .topic-head {
+      display: flex; align-items: baseline; gap: 7px; flex-shrink: 0;
+      margin: 16px 2px 8px; padding: 0;
+    }
+    .topic-head:first-child { margin-top: 2px; }
+    .topic-head .name {
+      font-family: var(--serif-brand); font-weight: 600; font-size: 15px; color: var(--ink);
+    }
+    .topic-head .count { font-size: 11.5px; opacity: .45; }
+    .notes {
+      display: flex; flex-direction: column; gap: 10px;
+      overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+      flex: 1 1 auto; min-height: 0; padding: 2px 2px 16px;
+      scrollbar-width: thin; scrollbar-color: rgba(var(--ink-a),.25) transparent;
+    }
+    .notes::-webkit-scrollbar { width: 7px; }
+    .notes::-webkit-scrollbar-thumb { background: rgba(var(--ink-a),.2); border-radius: 99px; }
+
+    .note-card {
+      background: var(--surface); border-radius: 13px; padding: 13px 15px; cursor: pointer;
+      box-shadow: var(--shadow-note); position: relative; flex-shrink: 0;
+      border: 1.5px solid transparent;
+      transition: transform .22s var(--ease), box-shadow .22s var(--ease), border-color .22s var(--ease);
+    }
+    .note-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+    .note-card.active { border-color: var(--ink); box-shadow: var(--shadow-lift); }
+    .note-card .ntitle {
+      font-family: var(--serif-body); font-weight: 500; font-size: 15px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-inline-end: 22px;
+    }
+    .note-card .snippet {
+      color: var(--ink); opacity: .55; font-size: 13px; margin-top: 3px; line-height: 1.45;
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+      word-break: break-word;
+    }
+    .note-card .meta {
+      color: var(--ink); opacity: .42; font-size: 11.5px; margin-top: 7px;
+    }
+    .note-card .del {
+      position: absolute; top: 7px; inset-inline-end: 7px; color: var(--ink); opacity: 0;
+      background: none; border: 0; cursor: pointer; font-size: 14px;
+      width: 30px; height: 30px; border-radius: 8px;                /* real tap target */
+      transition: opacity .2s;
+    }
+    .note-card:hover .del { opacity: .4; }
+    .note-card .del:hover { opacity: 1; }
+    /* A circle, half filled — the app's own shape, doing the work of a
+       sun/moon icon without importing someone else's vocabulary. */
+    /* one quiet button at the foot of the sidebar; the knobs live behind it */
+    .settingsbtn {
+      display: flex; align-items: center; justify-content: center; gap: 9px;
+      flex-shrink: 0; margin-top: 10px; padding: 9px 14px; width: 100%;
+      background: transparent; color: var(--ink); opacity: .6;
+      border: 1.5px solid rgba(var(--ink-a),.28); border-radius: 10px;
+      font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+      transition: opacity .25s var(--ease), border-color .25s var(--ease);
+    }
+    .settingsbtn:hover { opacity: 1; border-color: rgba(var(--ink-a),.5); }
+    .settingsbtn .gear { font-size: 14px; }
+
+    .settings-card { width: min(440px, 100%); }
+    .set-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 16px 0; border-bottom: 1px solid rgba(var(--ink-a),.1);
+    }
+    .set-row:last-of-type { border-bottom: 0; }
+    .set-label { font-family: var(--serif-body); font-size: 16px; }
+    .set-row .themebtn { margin-top: 0; min-width: 118px; justify-content: center; }
+    .set-hint { margin: 6px 0 0; font-size: 13px; opacity: .5; line-height: 1.55; font-style: italic; }
+    #lang-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    .themebtn {
+      display: flex; align-items: center; justify-content: center; gap: 9px;
+      flex-shrink: 0; margin-top: 10px; padding: 9px 14px;
+      background: transparent; color: var(--ink); opacity: .6;
+      border: 1.5px solid rgba(var(--ink-a),.28); border-radius: 10px;
+      font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+      transition: opacity .25s var(--ease), border-color .25s var(--ease);
+    }
+    .themebtn:hover { opacity: 1; border-color: rgba(var(--ink-a),.5); }
+    .themebtn .halfdot {
+      width: 13px; height: 13px; border-radius: 50%; flex-shrink: 0;
+      border: 1.5px solid currentColor;
+      background: linear-gradient(to right, currentColor 50%, transparent 50%);
+    }
+
+    .notes .empty {
+      color: var(--ink); opacity: .5; font-size: 13.5px; padding: 4px 2px;
+      font-family: var(--serif-body); line-height: 1.6;
+    }
+
+    /* ---------- the page: one note ---------- */
+    .workspace { min-width: 0; min-height: 0; display: flex; }
+    .page {
+      background: var(--surface); border-radius: 20px; box-shadow: var(--shadow-page);
+      display: flex; flex-direction: column;
+      flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden;
+    }
+
+    .pagehead {
+      display: flex; align-items: center; justify-content: space-between; gap: 14px;
+      padding: 16px clamp(16px, 2.2vw, 30px);
+      border-bottom: 1px solid rgba(var(--ink-a),.09); flex-shrink: 0;
+    }
+    .headleft { display: flex; align-items: center; gap: 10px; min-width: 0; }
+    /* the folder field: quiet until you use it, like a piece of the header */
+    .folder {
+      background: transparent; color: var(--ink); border: 1px solid rgba(var(--ink-a),.16);
+      border-radius: 8px; padding: 5px 10px; font: inherit; font-size: 12.5px;
+      max-width: 150px; min-width: 0; outline: 0;
+      transition: border-color .2s var(--ease), background .2s var(--ease);
+    }
+    .folder::placeholder { color: var(--ink); opacity: .4; }
+    .folder:hover { border-color: rgba(var(--ink-a),.32); }
+    .folder:focus { border-color: rgba(var(--ink-a),.5); background: var(--surface); }
+    .note-card .folder-tag {
+      display: inline-block; font-size: 11px; opacity: .55; margin-inline-start: 6px;
+    }
+    /* pin toggle in the header: faded when off, solid when the note is pinned */
+    .pinbtn {
+      background: transparent; border: 1px solid rgba(var(--ink-a),.16); border-radius: 8px;
+      cursor: pointer; font-size: 13px; line-height: 1; padding: 5px 8px; flex-shrink: 0;
+      filter: grayscale(1); opacity: .5;
+      transition: opacity .2s var(--ease), filter .2s var(--ease), background .2s var(--ease), border-color .2s var(--ease);
+    }
+    .pinbtn:hover { opacity: .85; border-color: rgba(var(--ink-a),.32); }
+    .pinbtn.on { filter: none; opacity: 1; background: var(--sage); border-color: transparent; }
+    /* a pinned note card shows a small pin, and the Pinned section header */
+    .note-card .pin-tag { margin-inline-end: 5px; font-size: 11px; }
+    .pagemeta {
+      color: var(--ink); opacity: .5; font-size: 12.5px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    /* mobile-only "back to the list" — hidden on desktop where the list is always visible */
+    .back {
+      display: none; background: none; border: 0; cursor: pointer; color: var(--ink);
+      font: inherit; font-size: 14px; font-weight: 600; padding: 6px 8px 6px 0; flex-shrink: 0;
+    }
+
+    /* segmented control — the note and its unknot are two views of one thing */
+    .tabs {
+      display: flex; gap: 3px; background: rgba(var(--ink-a),.07);
+      padding: 3px; border-radius: 10px; flex-shrink: 0;
+    }
+    .tab {
+      background: transparent; border: 0; font: inherit; font-size: 13.5px; font-weight: 600;
+      color: var(--ink); opacity: .55; padding: 7px 14px; border-radius: 8px; cursor: pointer;
+      display: flex; align-items: center; gap: 6px; white-space: nowrap;
+      transition: background .25s var(--ease), opacity .25s var(--ease), box-shadow .25s var(--ease);
+    }
+    .tab:hover { opacity: .85; }
+    .tab.active { background: var(--surface); opacity: 1; box-shadow: 0 1px 3px rgba(34,34,34,.14); }
+
+    /* THE SCROLL FIX ---------------------------------------------------
+       Both views occupy the same single grid cell (1fr, capped by minmax(0,…)).
+       A grid track can't be stretched open by its content the way the old
+       flex item could, so each pane is forced to the page height and its
+       own overflow becomes a real scrollbar. */
+    .views {
+      flex: 1 1 auto; min-height: 0;
+      display: grid; grid-template-rows: minmax(0, 1fr); grid-template-columns: minmax(0, 1fr);
+    }
+    .view {
+      grid-area: 1 / 1; min-height: 0; min-width: 0;
+      overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin; scrollbar-color: rgba(var(--ink-a),.22) transparent;
+      display: none;
+    }
+    .view.active { display: block; }
+    .view::-webkit-scrollbar { width: 8px; }
+    .view::-webkit-scrollbar-thumb { background: rgba(var(--ink-a),.18); border-radius: 99px; }
+
+    /* --- writing view --- */
+    #view-note.active { display: flex; flex-direction: column; overflow: hidden; }
+    .editor {
+      width: 100%; max-width: 82ch; align-self: center;  /* lines never run uncomfortably long */
+      flex: 1 1 auto; min-height: 0;
+      background: transparent; color: var(--ink);
+      border: 0; outline: 0;
+      padding: clamp(20px, 2.6vw, 34px) var(--pad-page) var(--pad-page);
+      font-family: var(--serif-body);
+      font-size: clamp(16px, 1.15vw, 19px); line-height: 1.7;
+      overflow-y: auto; overscroll-behavior: contain;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    /* placeholder — contenteditable has none of its own, so we draw it */
+    .editor:empty::before {
+      content: attr(data-placeholder);
+      color: var(--ink); opacity: .38; font-style: italic; pointer-events: none;
+    }
+    .editor .pl { min-height: 1.7em; }        /* an empty line still holds a caret */
+
+    /* a checklist row: text is the row's own editable content; the box is
+       positioned out of the flow so the caret never has to sit beside it */
+    .editor .li {
+      position: relative; padding-inline-start: 32px; margin: 3px 0; min-height: 1.7em;
+    }
+    .editor .li .chk {
+      position: absolute; inset-inline-start: 0; top: .1em;
+      width: 20px; height: 20px;
+      border: 1.8px solid rgba(var(--ink-a),.5); border-radius: 6px;
+      cursor: pointer; display: grid; place-items: center;
+      transition: background .15s var(--ease), border-color .15s var(--ease);
+      -webkit-user-select: none; user-select: none;
+    }
+    .editor .li .chk::after {
+      content: "✓"; font-size: 13px; line-height: 1; color: var(--btn-fg);
+      opacity: 0; transform: scale(.6); transition: opacity .15s, transform .15s;
+    }
+    .editor .li[data-checked="true"] .chk { background: var(--ink); border-color: var(--ink); }
+    .editor .li[data-checked="true"] .chk::after { opacity: 1; transform: scale(1); }
+    .editor .li[data-checked="true"] { opacity: .5; text-decoration: line-through; }
+    .iconbtn.on { background: rgba(var(--ink-a),.12); }
+
+    /* --- unknot view --- */
+    .unknot-body {
+      padding: clamp(20px, 2.4vw, 30px) var(--pad-page) var(--pad-page);
+      max-width: 74ch; margin: 0 auto;                   /* comfortable measure, centred on wide screens */
+    }
+    .verdict {
+      background: var(--sage); border-inline-start: 4px solid var(--charcoal); color: var(--ink);
+      padding: 16px 19px; border-radius: 12px; font-size: clamp(15px, 1vw, 16px); line-height: 1.55;
+      font-family: var(--serif-body); margin-bottom: 4px;
+    }
+    section h3 {
+      margin: 24px 0 8px; font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .13em; color: var(--ink); opacity: .45;
+    }
+    .unknot-body p { line-height: 1.66; opacity: .9; margin: 0; }
+    .unknot-body ul { margin: 0; padding-inline-start: 20px; }
+    .unknot-body li { margin: 7px 0; opacity: .9; line-height: 1.6; }
+    .unknot-body li::marker { color: var(--ink); opacity: .5; }
+    /* share sits quietly at the end of the read-back */
+    .btn.share { margin-top: 28px; font-size: 14px; padding: 10px 20px; }
+    .btn.share .ico { font-size: 15px; }
+
+    /* the not-yet-unknotted state — an invitation, not an error */
+    .invite {
+      min-height: 100%; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; text-align: center; padding: 60px 30px; gap: 6px;
+    }
+    .invite .glyph { width: 54px; height: 54px; opacity: .38; margin-bottom: 8px; color: var(--ink); }
+    .invite .glyph svg { width: 100%; height: 100%; display: block; }
+
+    /* The knot untangling, while the model is genuinely reading the note.
+       It covers a real wait — it isn't a delay invented to look busy — so it
+       never costs anyone time, and it says: this is happening, to your note,
+       right now. The line draws in, then keeps travelling out, and loops. */
+    .invite .glyph.working { opacity: .55; }
+    .invite .glyph.working svg path { stroke: currentColor;
+      stroke-dasharray: 1;
+      animation: unknotting 2.6s cubic-bezier(.4,.05,.3,1) infinite;
+    }
+    @keyframes unknotting {
+      0%   { stroke-dashoffset: 1; }
+      50%  { stroke-dashoffset: 0; }
+      100% { stroke-dashoffset: -1; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .invite .glyph.working svg path { stroke: currentColor; animation: none; stroke-dasharray: none; }
+    }
+    .invite p {
+      font-family: var(--serif-body); font-size: 16px; opacity: .6;
+      max-width: 34ch; line-height: 1.7; margin: 0 0 18px;
+    }
+
+    .pagefoot {
+      display: flex; align-items: center; gap: 12px;
+      padding: 13px clamp(16px, 2.2vw, 30px);
+      border-top: 1px solid rgba(var(--ink-a),.09); flex-shrink: 0;
+    }
+    .pagefoot .hint { flex: 1 1 auto; }        /* the status takes the slack */
+
+    .hist { display: flex; gap: 4px; flex-shrink: 0; }
+    .iconbtn {
+      width: 32px; height: 32px; border-radius: 9px; border: 0; cursor: pointer;
+      background: transparent; color: var(--ink); font-size: 16px; line-height: 1;
+      display: grid; place-items: center;
+      transition: background .2s var(--ease), opacity .2s var(--ease);
+    }
+    .iconbtn:hover:not(:disabled) { background: rgba(var(--ink-a),.09); }
+    .iconbtn:disabled { opacity: .25; cursor: default; }
+
+    /* the Undo offered after something is deleted — a real way back */
+    .undo-link {
+      background: none; border: 0; padding-inline-start: 6px; cursor: pointer;
+      font: inherit; font-size: 12.5px; font-weight: 700; color: var(--ink);
+      text-decoration: underline; text-underline-offset: 2px;
+    }
+    /* silent by default — it only speaks when something actually happened,
+       then gets out of the way. A permanent label explaining that the app
+       saves is the app talking about itself. */
+    .pagefoot .hint {
+      color: var(--ink); opacity: 0; font-size: 12.5px; min-width: 0;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      transition: opacity .4s var(--ease);
+    }
+    .pagefoot .hint.show { opacity: .5; }
+
+    .btn {
+      background: var(--btn-bg); color: var(--btn-fg);
+      border: 1.5px solid transparent; font: inherit; font-weight: 600; font-size: 14.5px;
+      padding: 11px 22px; border-radius: 999px; cursor: pointer; flex-shrink: 0;
+      display: inline-flex; align-items: center; gap: 8px; white-space: nowrap;
+      box-shadow: 0 2px 6px rgba(34,34,34,.14);
+      transition: transform .3s var(--ease), box-shadow .3s var(--ease),
+                  opacity .3s var(--ease), border-color .3s var(--ease);
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(34,34,34,.22); border-color: var(--surface); }
+    .btn:active { transform: translateY(0); box-shadow: 0 2px 6px rgba(34,34,34,.16); }
+    .btn:disabled { opacity: .38; cursor: default; transform: none; box-shadow: none; }
+
+    /* ---------- tablet: narrower list, same two-pane shape ---------- */
+    @media (max-width: 1080px) {
+      .app { grid-template-columns: clamp(210px, 30vw, 260px) minmax(0, 1fr); }
+    }
+
+    /* ---------- phone: one pane at a time (master → detail) ----------
+       Both panes share one grid cell; .app.showing-note decides which is up.
+       This is how every native notes app behaves on a phone. */
+    @media (max-width: 780px) {
+      .app {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-rows: minmax(0, 1fr);
+        gap: 0;
+      }
+      .sidebar, .workspace { grid-area: 1 / 1; }
+      .workspace { display: none; }
+      .app.showing-note .sidebar { display: none; }
+      .app.showing-note .workspace { display: flex; }
+
+      .back { display: flex; align-items: center; }
+      .page { border-radius: 16px; }
+      .brand h1 { font-size: 26px; }
+      .notes { padding-bottom: 8px; }
+      .note-card .del { opacity: .35; }                  /* no hover on touch */
+      .pagemeta { font-size: 12px; }
+      .tab { padding: 7px 12px; font-size: 13px; }
+    }
+
+    /* ---------- small phones: protect the essentials ---------- */
+    @media (max-width: 420px) {
+      /* the hint stays: it carries the Undo after a delete, which is exactly
+         when a small screen needs it most. It ellipsises rather than hides. */
+      .btn { padding: 11px 16px; }
+      .pagefoot { gap: 8px; padding-inline: 12px; }
+      .iconbtn { width: 30px; height: 30px; }
+      .tab span.label { display: none; }                 /* the mark alone still reads */
+      .tabs { gap: 2px; }
+    }
+
+    /* ---------- short/landscape screens ---------- */
+    @media (max-height: 520px) {
+      .app { padding: 10px; }
+      .brand { margin-bottom: 12px; }
+      .newbtn { padding: 9px 14px; margin-bottom: 8px; }
+      .search { margin-bottom: 10px; }
+      .pagehead, .pagefoot { padding-top: 9px; padding-bottom: 9px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; }
+      .btn:hover, .newbtn:hover, .note-card:hover { transform: none; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Shown on every open, like a native app's launch screen. It covers the
+       real cold start (notes fetch + fonts), and leaves the moment the app is
+       actually ready — so it costs a person nothing they weren't already
+       waiting for. -->
+  <div class="splash" id="splash">
+    <div class="splash-mark" id="splash-mark"></div>
+  </div>
+
+  <!-- The one thing a filing cabinet can't do: look back over everything it
+       has read and say "you keep doing this." -->
+  <div class="sheet-over" id="threads">
+    <div class="sheet-card">
+      <div class="sheet-head">
+        <div>
+          <h2>What keeps coming up</h2>
+          <div class="sub" id="threads-sub"></div>
+        </div>
+        <button class="iconbtn" id="threads-close" aria-label="Close">✕</button>
+      </div>
+      <div class="sheet-body" id="threads-body"></div>
+    </div>
+  </div>
+
+  <!-- Settings: the quiet knobs — appearance, language, and manual folders —
+       gathered in one place so the sidebar stays about your notes. -->
+  <div class="sheet-over" id="settings">
+    <div class="sheet-card settings-card">
+      <div class="sheet-head">
+        <h2 id="settings-title">Settings</h2>
+        <button class="iconbtn" id="settings-close" aria-label="Close">✕</button>
+      </div>
+      <div class="sheet-body">
+        <div class="set-row">
+          <span class="set-label" id="set-appearance">Appearance</span>
+          <button class="themebtn" id="theme">
+            <span class="halfdot" aria-hidden="true"></span><span id="theme-label">Dark</span>
+          </button>
+        </div>
+        <div class="set-row">
+          <span class="set-label" id="set-language">Language</span>
+          <button class="themebtn" id="lang" title="العربية / English">
+            <span id="lang-label">العربية</span>
+          </button>
+        </div>
+        <div class="set-row">
+          <span class="set-label" id="set-organize">Organize by folder</span>
+          <button class="themebtn" id="view-folders"><span id="view-folders-label">Folders</span></button>
+        </div>
+        <p class="set-hint" id="set-folder-hint">To file a note, open it and type a folder name in its header.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="app" id="app">
+    <!-- LEFT: the notes list -->
+    <aside class="sidebar">
+      <a class="brand" href="/" title="About Unknot">
+        <div class="mark" aria-hidden="true"><span class="mark-icon"></span></div>
+        <h1>Unknot</h1>
+      </a>
+      <button class="newbtn" id="new">＋ New note</button>
+      <button class="threadsbtn" id="threads-btn">What keeps coming up</button>
+      <input class="search" id="search" type="search" placeholder="Search notes and unknots" autocomplete="off" />
+      <div class="listtop">
+        <span class="listhead" id="listhead">Your notes</span>
+        <div class="sorttabs">
+          <button class="sorttab active" id="sort-recent" data-mode="recent">Recent</button>
+          <button class="sorttab star" id="sort-topics" data-mode="topics"><span class="mark-icon glyph-mark"></span><span id="sort-topics-label">Topics</span></button>
+        </div>
+      </div>
+      <div class="notes" id="history"></div>
+      <button class="settingsbtn" id="settings-btn">
+        <span class="gear" aria-hidden="true">☰</span><span id="settings-label">Settings</span>
+      </button>
+    </aside>
+
+    <!-- RIGHT: one note, the whole page -->
+    <main class="workspace">
+      <div class="page">
+        <header class="pagehead">
+          <div class="headleft">
+            <button class="back" id="back" aria-label="Back to your notes">‹ Notes</button>
+            <div class="pagemeta" id="meta">New note</div>
+            <!-- file this note into a folder you name; type a new one or pick an
+                 existing from the list. Empty = unfiled. -->
+            <input class="folder" id="folder" list="folder-list" placeholder="📁 Folder" autocomplete="off" />
+            <datalist id="folder-list"></datalist>
+            <button class="pinbtn" id="pin" aria-label="Pin note" title="Pin to top">📌</button>
+          </div>
+          <div class="tabs">
+            <button class="tab active" data-tab="note">Note</button>
+            <button class="tab" data-tab="unknot"><span class="mark-icon glyph-mark"></span><span class="label">Unknot</span></button>
+          </div>
+        </header>
+
+        <div class="views">
+          <div class="view active" id="view-note">
+            <!-- A contenteditable editor, not a <textarea>: a real checkbox
+                 can't live inside plain-text form field. It still serialises
+                 to plain text (- [ ] / - [x] lines) so autosave, unknot and
+                 search are unchanged. dir="auto" so each note follows the
+                 language YOU write in, not the interface's. -->
+            <div id="note" class="editor" contenteditable="true" dir="auto"
+                 data-placeholder="What's on your mind? Start anywhere — it doesn't have to make sense yet."></div>
+          </div>
+          <div class="view" id="view-unknot"></div>
+        </div>
+
+        <footer class="pagefoot">
+          <div class="hist">
+            <button class="iconbtn" id="undo" title="Undo (Ctrl+Z)" aria-label="Undo" disabled>↶</button>
+            <button class="iconbtn" id="redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo" disabled>↷</button>
+            <button class="iconbtn" id="checklist" title="Checklist" aria-label="Checklist">☑</button>
+          </div>
+          <span class="hint" id="status"></span>
+          <button class="btn" id="analyze"><span class="mark-icon glyph-mark"></span> Unknot it</button>
+        </footer>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    /* ---------- language ----------
+       The Arabic is written as a friend actually speaks, not translated word
+       for word from the English. "Unknot it" is فكّ العقدة — untie the knot —
+       which is the same image the whole app is built on, and it happens to be
+       a real Arabic phrase for working something out. */
+    const I18N = {
+      en: {
+        newNote: "＋ New note",
+        threads: "What keeps coming up",
+        search: "Search notes and unknots",
+        yourNotes: "Your notes",
+        sortRecent: "Recent",
+        sortTopics: "Topics",
+        sortFolders: "Folders",
+        folderPlaceholder: "📁 Folder",
+        unfiled: "Unfiled",
+        settings: "Settings",
+        appearance: "Appearance",
+        language: "Language",
+        organize: "Organize by folder",
+        folderHint: "To file a note, open it and type a folder name in its header.",
+        pin: "Pin to top",
+        unpin: "Unpin",
+        pinned: "Pinned",
+        share: "Share",
+        shareTitle: "My Unknot",
+        copied: "Copied to clipboard",
+        cantShare: "Couldn't share — ",
+        sharedBy: "Unknotted by Unknot",
+        grouping: "Sorting your notes by topic…",
+        needToGroup: (n) => `Write ${n} more note${n === 1 ? "" : "s"} and I'll sort them into topics`,
+        back: "‹ Notes",
+        tabNote: "Note",
+        tabUnknot: "Unknot",
+        placeholder: "What's on your mind? Start anywhere — it doesn't have to make sense yet.",
+        unknotIt: "Unknot it",
+        dark: "Dark", light: "Light",
+        langSwitch: "العربية",
+        saved: "Saved",
+        readingBack: "Reading it back…",
+        readingSlowly: "Reading it back, slowly…",
+        readingAll: "Reading back over everything…",
+        discarded: "Note discarded",
+        deleted: "Note deleted",
+        restored: "Restored",
+        undo: "Undo",
+        writeFirst: "Write something first, then I'll take a look",
+        cantSave: "Couldn't save — ",
+        cantUnknot: "Couldn't unknot — ",
+        cantRestore: "Couldn't restore — ",
+        emptyList: "Nothing here yet. Whatever's on your mind — this is a good place to put it.",
+        noMatch: "Nothing matches that.",
+        notYet: "This one hasn't been unknotted yet. When you're ready, I'll read it back to you — honestly.",
+        unknottedTag: "unknotted",
+        secHearing: "Here's what I'm hearing",
+        secAssuming: "What you might be assuming",
+        secPushBack: "Where I'd gently push back",
+        secWorking: "What's genuinely working",
+        secInstead: "What I'd try instead",
+        seenIn: "Where I've seen it",
+        across: (n) => `across ${n} unknotted note${n === 1 ? "" : "s"}`,
+        needMore: (n) => `Unknot ${n} more note${n === 1 ? "" : "s"} and I can look back across them`,
+        threadsReady: "Look back across everything you've unknotted",
+        undoTip: "Undo (Ctrl+Z)", redoTip: "Redo (Ctrl+Shift+Z)",
+        deleteTip: "Delete note", closeTip: "Close",
+      },
+      ar: {
+        newNote: "＋ ملاحظة جديدة",
+        threads: "ما الذي يتكرر معك",
+        search: "ابحث في ملاحظاتك",
+        yourNotes: "ملاحظاتك",
+        sortRecent: "الأحدث",
+        sortTopics: "المواضيع",
+        sortFolders: "المجلدات",
+        folderPlaceholder: "📁 مجلد",
+        unfiled: "غير مصنّفة",
+        settings: "الإعدادات",
+        appearance: "المظهر",
+        language: "اللغة",
+        organize: "التنظيم بالمجلدات",
+        folderHint: "لتصنيف ملاحظة، افتحها واكتب اسم مجلد في أعلاها.",
+        pin: "تثبيت في الأعلى",
+        unpin: "إلغاء التثبيت",
+        pinned: "مثبّتة",
+        share: "مشاركة",
+        shareTitle: "فكّ العقدة",
+        copied: "نُسخ إلى الحافظة",
+        cantShare: "تعذّرت المشاركة — ",
+        sharedBy: "بواسطة تطبيق Unknot",
+        grouping: "أرتّب ملاحظاتك حسب الموضوع…",
+        needToGroup: (n) => `اكتب ${n} ملاحظة أخرى وسأرتّبها في مواضيع`,
+        back: "الملاحظات ›",
+        tabNote: "الملاحظة",
+        tabUnknot: "فكّ العقدة",
+        placeholder: "ما الذي يشغل بالك؟ ابدأ من أي نقطة — لا يلزم أن يكون واضحاً بعد.",
+        unknotIt: "فكّ العقدة",
+        dark: "داكن", light: "فاتح",
+        langSwitch: "English",
+        saved: "تم الحفظ",
+        readingBack: "أقرأها الآن…",
+        readingSlowly: "أقرأها بتأنٍّ…",
+        readingAll: "أعيد قراءة كل ما كتبته…",
+        discarded: "حُذفت الملاحظة",
+        deleted: "حُذفت الملاحظة",
+        restored: "تمت الاستعادة",
+        undo: "تراجع",
+        writeFirst: "اكتب شيئاً أولاً، ثم سألقي نظرة",
+        cantSave: "تعذّر الحفظ — ",
+        cantUnknot: "تعذّر فكّ العقدة — ",
+        cantRestore: "تعذّرت الاستعادة — ",
+        emptyList: "لا شيء هنا بعد. مهما كان ما يشغل بالك — هذا مكان مناسب له.",
+        noMatch: "لا يوجد ما يطابق بحثك.",
+        notYet: "لم تُفكّ عقدة هذه الملاحظة بعد. حين تكون مستعداً، سأقرأها لك — بصدق.",
+        unknottedTag: "مفكوكة",
+        secHearing: "ما أفهمه منك",
+        secAssuming: "ما قد تفترضه دون أن تنتبه",
+        secPushBack: "أين أخالفك برفق",
+        secWorking: "ما هو جيد فعلاً",
+        secInstead: "ما أقترح تجربته",
+        seenIn: "أين لمستُ ذلك",
+        across: (n) => `عبر ${n} ملاحظة مفكوكة`,
+        needMore: (n) => `فكّ ${n} ملاحظة أخرى، وعندها أستطيع النظر عبرها`,
+        threadsReady: "انظر عبر كل ما فككته",
+        undoTip: "تراجع (Ctrl+Z)", redoTip: "إعادة (Ctrl+Shift+Z)",
+        deleteTip: "حذف الملاحظة", closeTip: "إغلاق",
+      },
+    };
+
+    let lang = "en";
+    const T = (k, ...a) => {
+      const v = (I18N[lang] || I18N.en)[k];
+      return typeof v === "function" ? v(...a) : v;
+    };
+
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => s.replace(/[&<>]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;" }[c]));
+    // strip checklist markers for previews: "- [x] milk" -> "✓ milk", "- [ ] eggs" -> "○ eggs"
+    const clean = (line) => line.replace(/^\s*- \[( |x|X)\] ?/, (_, c) =>
+      c.trim().toLowerCase() === "x" ? "✓ " : "○ ");
+    const firstLine = (t) => clean((t.split("\n").find(l => l.trim()) || "Untitled")).slice(0, 60);
+    const rest = (t) => t.split("\n").slice(1).map(clean).join(" ").trim();
+    const isPhone = () => window.matchMedia("(max-width: 780px)").matches;
+
+    // Everything on screen is a view of this one note.
+    let current = { id: null, content: "", analysis: null };
+    let allNotes = [];
+    let sortMode = "recent";    // "recent" | "topics"
+    let topicGroups = null;     // cached snapshot of the last grouping
+    let saveTimer = null;
+    let sayTimer = null;
+    let lastDiscarded = null;   // the note you just wiped, kept so it can come back
+
+    /* ---------- the editor ----------
+       A thin layer over a contenteditable div. The rest of the app only ever
+       sees plain text through editorGet()/editorSet() — checklist items live
+       as `- [ ] text` / `- [x] text` lines, so storage, unknot and search
+       never learned there's rich content at all. */
+    const CHECK_RE = /^(\s*)- \[( |x|X)\] (.*)$/;
+
+    function makeLine(text) {
+      const d = document.createElement("div");
+      d.className = "pl";
+      d.textContent = text || "";
+      return d;
+    }
+    /* The checkbox is ABSOLUTELY positioned, not an inline sibling. An empty
+       inline span next to a contenteditable=false element is a caret dead
+       zone in Chrome — the text would vanish. Out of flow, the row's own text
+       is plain editable content and the caret behaves normally. */
+    function makeItem(text, checked) {
+      const row = document.createElement("div");
+      row.className = "li";
+      row.dataset.checked = checked ? "true" : "false";
+      const box = document.createElement("span");
+      box.className = "chk";
+      box.contentEditable = "false";
+      box.setAttribute("role", "checkbox");
+      box.setAttribute("aria-checked", checked ? "true" : "false");
+      row.appendChild(box);
+      row.appendChild(document.createTextNode(text || ""));
+      return row;
+    }
+
+    // a checklist row's text, ignoring the (empty) checkbox span
+    const itemText = (row) => {
+      let s = "";
+      for (const n of row.childNodes) if (n.nodeType === 3) s += n.textContent;
+      return s;
+    };
+
+    // DOM -> plain text (what gets saved / sent to the model)
+    function editorGet() {
+      const ed = $("note");
+      const out = [];
+      for (const node of ed.childNodes) {
+        if (node.nodeType === 3) { out.push(node.textContent); continue; }   // stray text
+        if (node.classList && node.classList.contains("li")) {
+          const box = node.dataset.checked === "true" ? "x" : " ";
+          out.push(`- [${box}] ${itemText(node)}`);
+        } else if (node.nodeName === "BR") {
+          out.push("");
+        } else {
+          out.push(node.textContent || "");
+        }
+      }
+      return out.join("\n").replace(/\n+$/, "");   // trim trailing blank lines
+    }
+
+    // plain text -> DOM
+    function editorSet(text) {
+      const ed = $("note");
+      ed.innerHTML = "";
+      if (!text) return;                            // empty -> :empty shows placeholder
+      for (const raw of text.split("\n")) {
+        const m = raw.match(CHECK_RE);
+        ed.appendChild(m ? makeItem(m[3], m[2].toLowerCase() === "x") : makeLine(raw));
+      }
+    }
+
+    const editorFocus = () => $("note").focus();
+
+    // the top-level line the caret is in (a .pl or a .li)
+    function currentLine() {
+      const sel = window.getSelection();
+      if (!sel.rangeCount) return null;
+      let n = sel.getRangeAt(0).startContainer;
+      const ed = $("note");
+      while (n && n.parentNode !== ed) n = n.parentNode;
+      return n && n !== ed ? n : null;
+    }
+
+    function caretToEnd(el) {
+      $("note").focus();                            // selection is meaningless without focus
+      const r = document.createRange();
+      r.selectNodeContents(el);
+      r.collapse(false);
+      const s = window.getSelection();
+      s.removeAllRanges(); s.addRange(r);
+    }
+
+    // toolbar ☑ — turn the current line into a checklist item, or back
+    function toggleChecklist() {
+      const ed = $("note");
+      if (!ed.contains(document.activeElement) && document.activeElement !== ed) editorFocus();
+      let line = currentLine();
+      if (!line) {                                  // empty editor: start a list
+        line = makeItem("", false); ed.appendChild(line); caretToEnd(line);
+        onEdit(); return;
+      }
+      const isItem = line.nodeType === 1 && line.classList.contains("li");
+      if (isItem) {
+        const repl = makeLine(itemText(line));
+        line.replaceWith(repl); caretToEnd(repl);
+      } else {
+        const repl = makeItem(line.textContent, false);
+        line.replaceWith(repl); caretToEnd(repl);
+      }
+      onEdit();
+    }
+
+    // clicking a checkbox toggles it
+    $("note").addEventListener("click", (e) => {
+      const box = e.target.closest(".chk");
+      if (!box) return;
+      const row = box.closest(".li");
+      const now = row.dataset.checked !== "true";
+      row.dataset.checked = now ? "true" : "false";
+      box.setAttribute("aria-checked", now ? "true" : "false");
+      onEdit();
+    });
+
+    // Enter inside a checklist item behaves like a real notes app
+    $("note").addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || e.shiftKey || e.metaKey || e.ctrlKey) return;  // Ctrl+Enter = unknot
+      const line = currentLine();
+      if (!line || line.nodeType !== 1 || !line.classList.contains("li")) return;   // plain lines break normally
+      e.preventDefault();
+      const tx = itemText(line);
+      if (!tx.trim()) {                             // empty item + Enter -> leave the list
+        const pl = makeLine(""); line.replaceWith(pl); caretToEnd(pl);
+      } else {                                      // otherwise a fresh item below
+        const item = makeItem("", false);
+        line.after(item); caretToEnd(item);
+      }
+      onEdit();
+    });
+
+    // the mark's source, inlined so its stroke can be animated while we wait
+    let markSvg = "";
+    fetch("/logo-mark.svg")
+      .then(r => r.ok ? r.text() : "")
+      .then(t => { markSvg = t; })
+      .catch(() => {});
+
+    /* Say something only when there's something to say, then fall quiet.
+       Pass sticky for states the person is waiting on (or errors they need
+       to actually see). Pass onUndo to offer a way back. */
+    function say(msg, sticky = false, onUndo = null) {
+      clearTimeout(sayTimer);
+      const el = $("status");
+      el.textContent = msg;
+      if (onUndo) {
+        const b = document.createElement("button");
+        b.className = "undo-link";
+        b.textContent = T("undo");
+        b.addEventListener("click", onUndo);
+        el.appendChild(b);
+      }
+      el.classList.toggle("show", !!msg);
+      if (msg && !sticky) {
+        sayTimer = setTimeout(() => el.classList.remove("show"), onUndo ? 7000 : 1700);
+      }
+    }
+
+    /* ---------- undo / redo ----------
+       Our own stack rather than the textarea's: the browser's undo is wiped
+       whenever we set the value ourselves (opening a note, restoring one), and
+       it knows nothing about notes being discarded. Snapshots coalesce while
+       you type so one undo steps back a phrase, not a letter. */
+    const HIST_MAX = 200;
+    let hist = [];      // [ serialized-text ]
+    let hi = -1;        // where we are in it
+    let histTimer = null;
+
+    function resetHistory(value) {
+      clearTimeout(histTimer);
+      hist = [value];
+      hi = 0;
+      updateHistButtons();
+    }
+
+    function snapshot() {
+      clearTimeout(histTimer);
+      const v = editorGet();
+      if (hi >= 0 && hist[hi] === v) return;        // nothing new to record
+      hist = hist.slice(0, hi + 1);                 // typing after undo drops the redo branch
+      hist.push(v);
+      if (hist.length > HIST_MAX) hist.shift();
+      hi = hist.length - 1;
+      updateHistButtons();
+    }
+
+    function updateHistButtons() {
+      $("undo").disabled = hi <= 0;
+      $("redo").disabled = hi < 0 || hi >= hist.length - 1;
+    }
+
+    function applyHistory(text) {
+      editorSet(text);
+      editorFocus();
+      // caret to the very end — exact offset restore isn't meaningful once
+      // the content can be checklist rows, not a flat string
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      const r = document.createRange();
+      r.selectNodeContents($("note")); r.collapse(false);
+      sel.addRange(r);
+      updateHistButtons();
+      scheduleSave();
+      showTab("note");
+    }
+
+    function undo() {
+      snapshot();                                   // capture anything typed since the last one
+      if (hi <= 0) return;
+      hi--;
+      applyHistory(hist[hi]);
+    }
+
+    function redo() {
+      if (hi < 0 || hi >= hist.length - 1) return;
+      hi++;
+      applyHistory(hist[hi]);
+    }
+
+    const when = (iso) => {
+      const d = new Date(iso), now = new Date();
+      const loc = lang === "ar" ? "ar" : [];
+      return d.toDateString() === now.toDateString()
+        ? d.toLocaleTimeString(loc, { hour: "numeric", minute: "2-digit" })
+        : d.toLocaleDateString(loc, { month: "short", day: "numeric" });
+    };
+
+    async function api(method, url, body) {
+      const res = await fetch(url, {
+        method,
+        headers: body ? { "Content-Type": "application/json" } : {},
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || res.statusText);
+      }
+      return res.json();
+    }
+
+    /* ---------- which pane is up (phones only) ---------- */
+    const showNotePane = () => $("app").classList.add("showing-note");
+    const showListPane = () => $("app").classList.remove("showing-note");
+
+    /* ---------- rendering ---------- */
+
+    function renderHead() {
+      // the tab already shows whether it's been unknotted — don't say it twice
+      $("meta").textContent = current.id ? when(current.created_at) : "";
+    }
+
+    function renderUnknot() {
+      const a = current.analysis;
+      if (!a) {
+        $("view-unknot").innerHTML = `
+          <div class="invite">
+            <span class="mark-icon glyph"></span>
+            <p>${T("notYet")}</p>
+            <button class="btn" id="invite-btn"><span class="mark-icon glyph-mark"></span> Unknot it</button>
+          </div>`;
+        const b = $("invite-btn");
+        if (b) b.addEventListener("click", unknot);
+        return;
+      }
+      // an empty section just isn't shown — "— nothing here —" is a shrug,
+      // and a friend who has nothing to add on a point simply doesn't raise it
+      const bullets = (title, items) => (!items || !items.length) ? "" :
+        `<section><h3>${title}</h3><ul>${items.map(i => `<li>${esc(i)}</li>`).join("")}</ul></section>`;
+      const para = (title, text) => !text ? "" :
+        `<section><h3>${title}</h3><p>${esc(text)}</p></section>`;
+
+      $("view-unknot").innerHTML = `
+        <div class="unknot-body" dir="auto">
+          <div class="verdict">${esc(a.verdict)}</div>
+          ${para(T("secHearing"), a.understanding)}
+          ${bullets(T("secAssuming"), a.hidden_assumptions)}
+          ${bullets(T("secPushBack"), a.weaknesses)}
+          ${bullets(T("secWorking"), a.strengths)}
+          ${para(T("secInstead"), a.suggested_correction)}
+          <button class="btn ghost share" id="share"><span class="ico">↗</span> ${esc(T("share"))}</button>
+        </div>`;
+      $("view-unknot").scrollTop = 0;
+      const sb = $("share");
+      if (sb) sb.addEventListener("click", () => shareUnknot(current));
+    }
+
+    /* ---------- share the unknot ----------
+       The read-back is the thing worth passing on — someone sees their own
+       honest unknot and wants to show a friend. Native share sheet on mobile,
+       clipboard everywhere else. */
+    function shareText(note) {
+      const a = note.analysis;
+      if (!a) return note.content;
+      const lines = [note.content.trim(), "", "— " + T("sharedBy") + " —", "", a.verdict, ""];
+      const sec = (label, body) => { if (body) lines.push(label + ": " + body, ""); };
+      const list = (label, items) => {
+        if (items && items.length) { lines.push(label + ":"); items.forEach(i => lines.push("• " + i)); lines.push(""); }
+      };
+      sec(T("secHearing"), a.understanding);
+      list(T("secAssuming"), a.hidden_assumptions);
+      list(T("secPushBack"), a.weaknesses);
+      list(T("secWorking"), a.strengths);
+      sec(T("secInstead"), a.suggested_correction);
+      return lines.join("\n").trim();
+    }
+
+    async function shareUnknot(note) {
+      if (!note || !note.analysis) return;
+      const text = shareText(note);
+      try {
+        if (navigator.share) {
+          await navigator.share({ title: T("shareTitle"), text });
+        } else {
+          await navigator.clipboard.writeText(text);
+          say(T("copied"));
+        }
+      } catch (e) {
+        if (e && e.name === "AbortError") return;   // user dismissed the share sheet
+        // last resort if clipboard is blocked: a temporary textarea + execCommand
+        try {
+          const ta = document.createElement("textarea");
+          ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+          document.body.appendChild(ta); ta.select(); document.execCommand("copy");
+          ta.remove(); say(T("copied"));
+        } catch { say(T("cantShare") + (e.message || e), true); }
+      }
+    }
+
+    function showTab(name) {
+      document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === name));
+      $("view-note").classList.toggle("active", name === "note");
+      $("view-unknot").classList.toggle("active", name === "unknot");
+      if (name === "unknot") renderUnknot();
+    }
+
+    /* Search covers the unknot too, not just what you typed. You're far more
+       likely to remember "the one where I was assuming I had runway" than the
+       words you actually wrote at 2am — and only this app has that text. */
+    function haystack(n) {
+      const a = n.analysis;
+      if (!a) return n.content.toLowerCase();
+      return [n.content, a.verdict, a.understanding, a.suggested_correction,
+              ...(a.hidden_assumptions || []), ...(a.weaknesses || []), ...(a.strengths || [])]
+        .join(" ").toLowerCase();
+    }
+
+    const cardHtml = (n) => {
+      const preview = rest(n.content);         // a one-line note gets no empty second line
+      return `
+        <div class="note-card${n.id === current.id ? " active" : ""}" data-id="${n.id}">
+          <div class="ntitle" dir="auto">${n.pinned ? '<span class="pin-tag">📌</span>' : ""}${esc(firstLine(n.content))}</div>
+          ${preview ? `<div class="snippet" dir="auto">${esc(preview)}</div>` : ""}
+          <div class="meta">${when(n.created_at)}${n.analysis ? ` · <span class="mark-icon glyph-mark tiny"></span> ${T("unknottedTag")}` : ""}${
+            n.folder && sortMode !== "folders" ? ` · <span class="folder-tag" dir="auto">📁 ${esc(n.folder)}</span>` : ""}</div>
+          <button class="del" data-del="${n.id}" aria-label="${T("deleteTip")}">🗑</button>
+        </div>`;
+    };
+
+    function renderList() {
+      const q = $("search").value.trim().toLowerCase();
+
+      // searching always shows a flat, filtered list — topics + search is noise
+      if (q) {
+        const shown = allNotes.filter(n => haystack(n).includes(q));
+        $("history").innerHTML = shown.length ? shown.map(cardHtml).join("")
+          : `<p class="empty">${T("noMatch")}</p>`;
+        return;
+      }
+
+      if (sortMode === "folders") { renderFolders(); return; }
+      if (sortMode === "topics" && topicGroups) { renderGrouped(); return; }
+
+      if (!allNotes.length) {
+        $("history").innerHTML = `<p class="empty">${T("emptyList")}</p>`;
+        return;
+      }
+      // pinned notes get their own section at the top of Recent
+      const pinned = allNotes.filter(n => n.pinned);
+      const others = allNotes.filter(n => !n.pinned);
+      let html = "";
+      if (pinned.length) {
+        html += `<div class="topic-head"><span class="name">📌 ${esc(T("pinned"))}</span><span class="count">${pinned.length}</span></div>`;
+        html += pinned.map(cardHtml).join("");
+        if (others.length) html += `<div class="topic-head"><span class="name">${esc(T("sortRecent"))}</span><span class="count">${others.length}</span></div>`;
+      }
+      html += others.map(cardHtml).join("");
+      $("history").innerHTML = html;
+    }
+
+    // group by the folders the user filed notes into — instant, no model call
+    function renderFolders() {
+      if (!allNotes.length) {
+        $("history").innerHTML = `<p class="empty">${T("emptyList")}</p>`;
+        return;
+      }
+      const byFolder = new Map();
+      for (const n of allNotes) {
+        const key = n.folder || " ";        // unfiled sorts last
+        if (!byFolder.has(key)) byFolder.set(key, []);
+        byFolder.get(key).push(n);
+      }
+      const names = [...byFolder.keys()].sort((a, b) =>
+        a === " " ? 1 : b === " " ? -1 : a.localeCompare(b));
+      $("history").innerHTML = names.map(key => {
+        const notes = byFolder.get(key);
+        const label = key === " " ? T("unfiled") : key;
+        return `<div class="topic-head"><span class="name" dir="auto">📁 ${esc(label)}</span><span class="count">${notes.length}</span></div>`
+          + notes.map(cardHtml).join("");
+      }).join("");
+    }
+
+    // grouped view — the server's snapshot, but rendered against the CURRENT
+    // notes so nothing added or deleted since can be shown wrong or lost
+    function renderGrouped() {
+      const byId = new Map(allNotes.map(n => [n.id, n]));
+      const placed = new Set();
+      let html = "";
+      for (const g of topicGroups) {
+        const notes = g.note_ids.map(id => byId.get(id)).filter(Boolean);
+        if (!notes.length) continue;
+        notes.forEach(n => placed.add(n.id));
+        html += `<div class="topic-head"><span class="name" dir="auto">${esc(g.topic)}</span><span class="count">${notes.length}</span></div>`;
+        html += notes.map(cardHtml).join("");
+      }
+      // anything created since the snapshot still shows, never hidden
+      const fresh = allNotes.filter(n => !placed.has(n.id));
+      if (fresh.length) {
+        html += `<div class="topic-head"><span class="name">${esc(T("sortRecent"))}</span><span class="count">${fresh.length}</span></div>`;
+        html += fresh.map(cardHtml).join("");
+      }
+      $("history").innerHTML = html;
+    }
+
+    async function setSortMode(mode) {
+      sortMode = mode;
+      document.querySelectorAll(".sorttab").forEach(t => t.classList.toggle("active", t.dataset.mode === mode));
+      if (mode !== "topics") { renderList(); return; }   // recent + folders are instant, client-side
+      // (re)group on demand — it's an LLM call, so it's an action, not a live view
+      $("history").innerHTML = `<div class="invite" style="min-height:180px">${
+        markSvg ? `<div class="glyph working">${markSvg}</div>` : `<span class="mark-icon glyph"></span>`
+      }<p>${esc(T("grouping"))}</p></div>`;
+      try {
+        const d = await fetch("/api/topics").then(async r => {
+          if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+          return r.json();
+        });
+        topicGroups = d.groups;
+        renderGrouped();
+      } catch (e) {
+        $("history").innerHTML = `<p class="empty">${esc(e.message)}</p>`;
+      }
+    }
+
+    async function loadList() {
+      allNotes = await fetch("/api/notes").then(r => r.json());
+      renderList();
+      refreshFolderList();
+      // patterns need repetition; don't offer it before it can say anything true
+      const ready = allNotes.filter(n => n.analysis).length;
+      $("threads-btn").disabled = ready < 3;
+      $("threads-btn").title = ready < 3 ? T("needMore", 3 - ready) : T("threadsReady");
+    }
+
+    /* ---------- folders (your own) ---------- */
+
+    // the datalist that autocompletes existing folder names as you type
+    function refreshFolderList() {
+      const names = [...new Set(allNotes.map(n => n.folder).filter(Boolean))].sort();
+      $("folder-list").innerHTML = names.map(f => `<option value="${esc(f)}"></option>`).join("");
+    }
+
+    // reflect the open note's folder + pin state in the header
+    function syncFolderInput() {
+      $("folder").value = current.folder || "";
+      $("pin").classList.toggle("on", !!current.pinned);
+      $("pin").title = current.pinned ? T("unpin") : T("pin");
+    }
+
+    // pin/unpin the current note (create it first if it's brand new)
+    async function togglePin() {
+      if (!current.id) { await flush(); if (!current.id) return; }
+      const next = !current.pinned;
+      try {
+        const n = await api("PUT", "/api/notes/" + current.id + "/pin", { pinned: next });
+        current.pinned = n.pinned;
+        syncFolderInput();
+        await loadList();
+      } catch (e) { say(T("cantSave") + e.message, true); }
+    }
+
+    // file the current note; create it first if it hasn't been saved yet
+    async function saveFolder() {
+      const val = $("folder").value.trim();
+      if (!current.id) { await flush(); if (!current.id) return; }   // needs a note to file
+      if ((current.folder || "") === val) return;
+      try {
+        const n = await api("PUT", "/api/notes/" + current.id + "/folder", { folder: val || null });
+        current.folder = n.folder;
+        await loadList();
+      } catch (e) { say(T("cantSave") + e.message, true); }
+    }
+
+    /* ---------- what keeps coming up ---------- */
+
+    async function openThreads() {
+      const over = $("threads");
+      over.classList.add("open");
+      $("threads-sub").textContent = "";
+      const glyph = markSvg ? `<div class="glyph working">${markSvg}</div>`
+                            : `<span class="mark-icon glyph"></span>`;
+      $("threads-body").innerHTML =
+        `<div class="invite">${glyph}<p>Reading back over everything…</p></div>`;
+      try {
+        const d = await fetch("/api/threads").then(async r => {
+          if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+          return r.json();
+        });
+        $("threads-sub").textContent = T("across", d.note_count);
+        $("threads-body").innerHTML = d.threads.map(t => `
+          <div class="thread" dir="auto">
+            <p class="pat" dir="auto">${esc(t.pattern)}</p>
+            <h4>${T("seenIn")}</h4>
+            <ul>${(t.seen_in || []).map(s => `<li>${esc(s)}</li>`).join("")}</ul>
+            <div class="nudge" dir="auto">${esc(t.nudge)}</div>
+          </div>`).join("")
+          + (d.closing ? `<p class="sheet-closing" dir="auto">${esc(d.closing)}</p>` : "");
+      } catch (e) {
+        $("threads-body").innerHTML = `<div class="invite"><p>${esc(e.message)}</p></div>`;
+      }
+    }
+
+    const closeThreads = () => $("threads").classList.remove("open");
+
+    /* ---------- editing ---------- */
+
+    function newNote() {
+      current = { id: null, content: "", analysis: null, folder: null, pinned: false };
+      editorSet("");
+      resetHistory("");
+      renderHead(); renderList(); showTab("note"); syncFolderInput();
+      say("");
+      showNotePane();
+      if (!isPhone()) editorFocus();              // don't yank up the phone keyboard
+    }
+
+    async function openNote(id) {
+      clearTimeout(saveTimer);
+      await flush();
+      current = await fetch("/api/notes/" + id).then(r => r.json());
+      editorSet(current.content);
+      resetHistory(current.content);     // each note has its own history
+      renderHead(); renderList(); showTab("note"); syncFolderInput();
+      say("");
+      showNotePane();
+    }
+
+    // Push whatever's in the editor to the server. Creates the note on first save.
+    async function flush() {
+      const content = editorGet().trim();
+      if (content === current.content) return;          // nothing actually changed
+
+      /* Emptied it? Then it isn't a note any more — throw it away rather than
+         leave a stale copy sitting in the list. Clearing current.id first also
+         means whatever gets typed next starts a NEW note instead of quietly
+         overwriting the one they just wiped. */
+      if (!content) {
+        if (!current.id) return;                        // a blank new note: nothing to discard
+        const id = current.id;
+        const snap = { content: current.content, analysis: current.analysis, folder: current.folder, pinned: current.pinned };
+        current = { id: null, content: "", analysis: null };
+        renderHead(); showTab("note");
+        try { await fetch("/api/notes/" + id, { method: "DELETE" }); } catch {}
+        lastDiscarded = snap;
+        await loadList();
+        say(T("discarded"), false, () => restoreNote(snap));
+        return;
+      }
+
+      try {
+        let saved;
+        if (current.id) {
+          saved = await api("PUT", "/api/notes/" + current.id, { content });
+        } else {
+          /* Typed back exactly what was just wiped? Then this is an undo, not a
+             new note — bring its unknot back with it rather than making them
+             pay to re-run it. */
+          const payload = { content };
+          if (lastDiscarded && lastDiscarded.content === content && lastDiscarded.analysis) {
+            payload.analysis = lastDiscarded.analysis;
+          }
+          saved = await api("POST", "/api/notes", payload);
+          lastDiscarded = null;
+        }
+        current.id = saved.id;
+        current.content = saved.content;
+        current.created_at = saved.created_at;
+        current.analysis = saved.analysis;
+        say(T("saved"));
+        renderHead();
+        await loadList();
+      } catch (e) {
+        say(T("cantSave") + e.message, true);
+      }
+    }
+
+    /* Put a deleted note back exactly as it was, unknot included. */
+    async function restoreNote(snap) {
+      try {
+        const n = await api("POST", "/api/notes", {
+          content: snap.content,
+          analysis: snap.analysis || null,
+          folder: snap.folder || null,
+          pinned: !!snap.pinned,
+        });
+        lastDiscarded = null;
+        current = n;
+        editorSet(n.content);
+        resetHistory(n.content);
+        renderHead(); showTab("note"); showNotePane(); syncFolderInput();
+        await loadList();
+        say(T("restored"));
+      } catch (e) {
+        say(T("cantRestore") + e.message, true);
+      }
+    }
+
+    function scheduleSave() {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(flush, 800);
+    }
+
+    /* ---------- unknotting ---------- */
+
+    async function unknot() {
+      clearTimeout(saveTimer);
+      await flush();                       // never unknot an unsaved thought
+      if (!current.id) {
+        say(T("writeFirst"));
+        editorFocus();
+        return;
+      }
+      $("analyze").disabled = true;
+      const b = $("invite-btn"); if (b) b.disabled = true;
+      say(T("readingBack"), true);
+      showTab("unknot");
+      // inline SVG animates; the plain image is the fallback if it didn't load
+      const glyph = markSvg
+        ? `<div class="glyph working">${markSvg}</div>`
+        : `<span class="mark-icon glyph"></span>`;
+      $("view-unknot").innerHTML = `<div class="invite">${glyph}<p>Reading it back, slowly…</p></div>`;
+      try {
+        const note = await api("POST", "/api/notes/" + current.id + "/analyze");
+        current = note;
+        say("");                            // the read-back speaks for itself
+        renderHead(); renderUnknot(); await loadList();
+      } catch (e) {
+        say(T("cantUnknot") + e.message, true);
+        renderUnknot();
+      } finally {
+        $("analyze").disabled = false;
+      }
+    }
+
+    /* ---------- wiring ---------- */
+
+    // one place every edit runs through: coalesced undo snapshot + autosave
+    function onEdit() {
+      // when the user deletes everything, browsers leave a stray <br>/<div>
+      // behind, which defeats :empty and hides the placeholder — scrub it
+      const ed = $("note");
+      if (!ed.textContent.trim() && !ed.querySelector(".li")) ed.innerHTML = "";
+      clearTimeout(histTimer);
+      histTimer = setTimeout(snapshot, 450);   // one undo steps back a phrase, not a letter
+      scheduleSave();
+    }
+
+    $("note").addEventListener("input", onEdit);
+    $("note").addEventListener("blur", () => { clearTimeout(saveTimer); flush(); });
+    $("note").addEventListener("keydown", (e) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key === "Enter") { unknot(); return; }
+      // our stack, not the browser's — so we own it even after we set the value
+      if (mod && (e.key === "z" || e.key === "Z")) {
+        e.preventDefault();
+        e.shiftKey ? redo() : undo();
+      } else if (mod && (e.key === "y" || e.key === "Y")) {
+        e.preventDefault();
+        redo();
+      }
+    });
+
+    for (const [id, fn] of [["undo", undo], ["redo", redo], ["checklist", toggleChecklist]]) {
+      $(id).addEventListener("click", fn);
+      $(id).addEventListener("mousedown", (e) => e.preventDefault());  // keep the caret in the note
+    }
+    $("new").addEventListener("click", async () => { clearTimeout(saveTimer); await flush(); newNote(); });
+    // go back instantly; the save catches up on its own (never make someone wait to leave)
+    $("back").addEventListener("click", () => { clearTimeout(saveTimer); showListPane(); flush(); });
+    $("analyze").addEventListener("click", unknot);
+    /* ---------- theme ----------
+       Follows the system until you say otherwise; after that your choice wins
+       and is remembered. The label names where the button TAKES you, not where
+       you are. */
+    const THEME_KEY = "unknot-theme";
+    function applyTheme(t) {
+      document.documentElement.dataset.theme = t;
+      $("theme-label").textContent = t === "dark" ? T("light") : T("dark");
+    }
+    applyTheme(document.documentElement.dataset.theme || "light");
+
+    /* ---------- switching language ----------
+       Setting `dir` is what actually mirrors the app: the sidebar moves to the
+       right, the list, the tabs, the bullets and the delete buttons all flip,
+       because the layout is written in logical properties rather than
+       left/right. */
+    const LANG_KEY = "unknot-lang";
+    function applyLang(l) {
+      lang = I18N[l] ? l : "en";
+      const rtl = lang === "ar";
+      document.documentElement.lang = lang;
+      document.documentElement.dir = rtl ? "rtl" : "ltr";
+
+      $("new").textContent = T("newNote");
+      $("threads-btn").textContent = T("threads");
+      $("search").placeholder = T("search");
+      document.querySelector(".listhead").textContent = T("yourNotes");
+      $("sort-recent").textContent = T("sortRecent");
+      $("sort-topics-label").textContent = T("sortTopics");
+      $("folder").placeholder = T("folderPlaceholder");
+      // settings sheet
+      $("settings-label").textContent = T("settings");
+      $("settings-title").textContent = T("settings");
+      $("set-appearance").textContent = T("appearance");
+      $("set-language").textContent = T("language");
+      $("set-organize").textContent = T("organize");
+      $("view-folders-label").textContent = T("sortFolders");
+      $("set-folder-hint").textContent = T("folderHint");
+      $("pin").title = current.pinned ? T("unpin") : T("pin");
+      $("back").textContent = T("back");
+      document.querySelector('[data-tab="note"]').textContent = T("tabNote");
+      document.querySelector('[data-tab="unknot"] .label').textContent = T("tabUnknot");
+      $("note").dataset.placeholder = T("placeholder");
+      $("analyze").lastChild.textContent = " " + T("unknotIt");
+      $("lang-label").textContent = T("langSwitch");
+      $("undo").title = T("undoTip");
+      $("redo").title = T("redoTip");
+      $("threads-close").setAttribute("aria-label", T("closeTip"));
+      document.querySelector(".sheet-head h2").textContent = T("threads");
+      applyTheme(document.documentElement.dataset.theme || "light");
+
+      renderList(); renderHead();
+      if ($("view-unknot").classList.contains("active")) renderUnknot();
+    }
+
+    $("lang").addEventListener("click", () => {
+      const next = lang === "ar" ? "en" : "ar";
+      try { localStorage.setItem(LANG_KEY, next); } catch (e) {}
+      applyLang(next);
+    });
+
+    $("theme").addEventListener("click", () => {
+      const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+      applyTheme(next);
+    });
+
+    // if you've never chosen, keep following the system when it changes
+    matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
+      try { if (localStorage.getItem(THEME_KEY)) return; } catch (err) {}
+      applyTheme(e.matches ? "dark" : "light");
+    });
+
+    $("search").addEventListener("input", renderList);
+    // Topics re-groups every time it's clicked (a fresh snapshot); Recent is instant
+    $("sort-recent").addEventListener("click", () => setSortMode("recent"));
+    $("sort-topics").addEventListener("click", () => setSortMode("topics"));
+
+    // Settings sheet — appearance, language, and folders live here
+    const openSettings = () => $("settings").classList.add("open");
+    const closeSettings = () => $("settings").classList.remove("open");
+    $("settings-btn").addEventListener("click", openSettings);
+    $("settings-close").addEventListener("click", closeSettings);
+    $("settings").addEventListener("click", (e) => { if (e.target === $("settings")) closeSettings(); });
+    // "Folders" here switches the list into folder-grouped view, then steps aside
+    $("view-folders").addEventListener("click", () => { closeSettings(); setSortMode("folders"); });
+    // file the note on Enter or when you click away; picking from the datalist fires change
+    $("folder").addEventListener("change", saveFolder);
+    $("folder").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("folder").blur(); } });
+    $("pin").addEventListener("click", togglePin);
+    $("pin").addEventListener("mousedown", (e) => e.preventDefault());  // keep caret in the editor
+    $("threads-btn").addEventListener("click", openThreads);
+    $("threads-close").addEventListener("click", closeThreads);
+    $("threads").addEventListener("click", (e) => { if (e.target === $("threads")) closeThreads(); });
+    addEventListener("keydown", (e) => { if (e.key === "Escape") { closeThreads(); closeSettings(); } });
+    document.querySelectorAll(".tab").forEach(t =>
+      t.addEventListener("click", () => showTab(t.dataset.tab)));
+
+    $("history").addEventListener("click", async (e) => {
+      const del = e.target.closest("[data-del]");
+      if (del) {
+        e.stopPropagation();
+        const id = Number(del.dataset.del);
+        const doomed = allNotes.find(n => n.id === id);
+        const snap = doomed ? { content: doomed.content, analysis: doomed.analysis, folder: doomed.folder, pinned: doomed.pinned } : null;
+        await fetch("/api/notes/" + id, { method: "DELETE" });
+        if (id === current.id) newNote();
+        await loadList();
+        if (snap) say(T("deleted"), false, () => restoreNote(snap));
+        return;
+      }
+      const card = e.target.closest(".note-card");
+      if (card) openNote(Number(card.dataset.id));
+    });
+
+    // don't lose a thought on a fast tab-close
+    window.addEventListener("beforeunload", () => {
+      const content = editorGet().trim();
+      if (content && content !== current.content && current.id) {
+        navigator.sendBeacon?.("/api/notes/" + current.id,
+          new Blob([JSON.stringify({ content })], { type: "application/json" }));
+      }
+    });
+
+    /* ---------- launch ----------
+       The splash waits on two things: the mark finishing its draw, and the app
+       actually being ready (notes fetched). Whichever is slower decides — so
+       on a slow load it's covering real work, and on a fast one it's gone in
+       about a second. It is never a delay for its own sake. */
+    const MIN_SPLASH = matchMedia("(prefers-reduced-motion: reduce)").matches ? 450 : 1150;
+
+    async function boot() {
+      const splash = $("splash");
+      const host = $("splash-mark");
+
+      const drawn = (async () => {
+        try {
+          host.innerHTML = await fetch("/logo-wide.svg").then(r => {
+            if (!r.ok) throw new Error(r.status);
+            return r.text();
+          });
+          requestAnimationFrame(() => host.classList.add("draw"));
+        } catch {
+          host.innerHTML = '<img src="/logo-wide.svg" alt="">';   // never lose the logo
+        }
+      })();
+
+      const ready = loadList().catch(() => {});         // the real cold start
+      const floor = new Promise(r => setTimeout(r, MIN_SPLASH));
+
+      await Promise.all([drawn, ready, floor]);
+      newNote();
+      // Language settles behind the splash: an Arabic speaker never sees a
+      // flash of English, and the app is already mirrored when it lifts.
+      // Their choice wins; otherwise follow the browser.
+      let saved = null;
+      try { saved = localStorage.getItem(LANG_KEY); } catch (e) {}
+      const fromBrowser = (navigator.language || "en").toLowerCase().startsWith("ar") ? "ar" : "en";
+      applyLang(saved || fromBrowser);
+      if (isPhone() && allNotes.length) showListPane();
+      splash.classList.add("done");
+    }
+
+    // never strand anyone behind the splash if something goes wrong
+    setTimeout(() => $("splash").classList.add("done"), 4000);
+    boot();
+  </script>
+</body>
+</html>
