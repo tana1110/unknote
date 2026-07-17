@@ -126,6 +126,67 @@
       opacity: .045; mix-blend-mode: soft-light;
     }
 
+    /* ---------- long-press note menu ---------- */
+    .notemenu-over { align-items: end; }          /* a bottom sheet on phones */
+    @media (min-width: 620px) { .notemenu-over { align-items: center; } }
+    .notemenu {
+      background: var(--surface); border-radius: 20px 20px 0 0; box-shadow: var(--shadow-page);
+      width: min(460px, 100%); padding: 10px; display: flex; flex-direction: column; gap: 2px;
+      animation: sheet-up .22s var(--ease);
+    }
+    @media (min-width: 620px) { .notemenu { border-radius: 18px; } }
+    @keyframes sheet-up { from { transform: translateY(12px); opacity: .6; } to { transform: none; opacity: 1; } }
+    .notemenu-title {
+      font-family: var(--serif-body); font-size: 14px; opacity: .55; padding: 12px 16px 8px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .notemenu-item {
+      display: flex; align-items: center; gap: 12px; width: 100%; text-align: start;
+      background: transparent; border: 0; cursor: pointer; font: inherit; font-size: 16px;
+      color: var(--ink); padding: 14px 16px; border-radius: 12px;
+      transition: background .15s var(--ease);
+    }
+    .notemenu-item:hover, .notemenu-item:active { background: rgba(var(--ink-a),.08); }
+    .notemenu-item .nm-ico { font-size: 17px; width: 22px; text-align: center; }
+    .notemenu-item.danger { color: var(--ink); }
+    .notemenu-item.cancel { justify-content: center; opacity: .6; margin-top: 4px; font-weight: 600; }
+
+    /* ---------- auth gate ---------- */
+    .auth {
+      position: fixed; inset: 0; z-index: 70; display: grid; place-items: center;
+      padding: 24px;
+      background:
+        radial-gradient(120% 100% at 50% 20%, var(--glow) 0%, transparent 58%),
+        var(--ground);
+    }
+    .auth[hidden] { display: none; }
+    .auth-card {
+      width: min(400px, 100%); background: var(--surface); border-radius: 20px;
+      box-shadow: var(--shadow-page); padding: clamp(28px, 5vw, 40px); text-align: center;
+    }
+    .auth-mark {
+      width: 46px; height: 46px; border-radius: 14px; background: var(--ink); color: var(--surface);
+      display: grid; place-items: center; margin: 0 auto 18px; box-shadow: var(--shadow-note);
+    }
+    .auth-mark .mark-icon { width: 30px; height: 30px; }
+    .auth-title { margin: 0; font-family: var(--serif-brand); font-weight: 600; font-size: 26px; letter-spacing: -.015em; }
+    .auth-sub { margin: 8px 0 22px; font-family: var(--serif-body); font-size: 15px; opacity: .6; line-height: 1.5; }
+    .auth-input {
+      width: 100%; background: rgba(var(--ink-a),.05); color: var(--ink);
+      border: 1.5px solid rgba(var(--ink-a),.16); border-radius: 12px;
+      padding: 13px 15px; font: inherit; font-size: 16px; outline: 0; margin-bottom: 12px;
+      transition: border-color .2s var(--ease), background .2s var(--ease);
+    }
+    .auth-input::placeholder { color: var(--ink); opacity: .4; }
+    .auth-input:focus { border-color: rgba(var(--ink-a),.45); background: var(--surface); }
+    .auth-error { color: var(--ink); font-size: 13.5px; min-height: 18px; margin: 2px 0 8px; opacity: .8; }
+    .auth-submit { width: 100%; justify-content: center; padding: 13px; font-size: 15.5px; }
+    .auth-submit:disabled { opacity: .5; cursor: default; }
+    .auth-switch { margin: 18px 0 0; font-size: 14px; opacity: .75; }
+    .linkbtn { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; font-weight: 700; color: var(--ink); text-decoration: underline; text-underline-offset: 2px; }
+    .auth-about { display: inline-block; margin-top: 16px; font-size: 13px; opacity: .5; color: var(--ink); text-decoration: none; }
+    .auth-about:hover { opacity: .8; }
+
     /* ---------- launch screen ---------- */
     .splash {
       position: fixed; inset: 0; z-index: 60;
@@ -671,6 +732,27 @@
   </style>
 </head>
 <body>
+  <!-- Sign in / sign up gate. The app never loads its data until there's a
+       valid token, so notes are always tied to an account. -->
+  <div class="auth" id="auth" hidden>
+    <div class="auth-card">
+      <div class="auth-mark"><span class="mark-icon"></span></div>
+      <h1 class="auth-title" id="auth-title">Welcome to Unknot</h1>
+      <p class="auth-sub" id="auth-sub">Make an account — your notes stay yours.</p>
+      <form id="auth-form" autocomplete="on">
+        <input class="auth-input" id="auth-user" type="text" placeholder="Username" autocomplete="username" autocapitalize="none" spellcheck="false" />
+        <input class="auth-input" id="auth-pass" type="password" placeholder="Password" autocomplete="current-password" />
+        <div class="auth-error" id="auth-error"></div>
+        <button class="btn auth-submit" id="auth-submit" type="submit">Create account</button>
+      </form>
+      <p class="auth-switch">
+        <span id="auth-switch-text">Already have an account?</span>
+        <button class="linkbtn" id="auth-switch">Log in</button>
+      </p>
+      <a class="auth-about" href="/" id="auth-about">What is Unknot?</a>
+    </div>
+  </div>
+
   <!-- Shown on every open, like a native app's launch screen. It covers the
        real cold start (notes fetch + fonts), and leaves the moment the app is
        actually ready — so it costs a person nothing they weren't already
@@ -691,6 +773,18 @@
         <button class="iconbtn" id="threads-close" aria-label="Close">✕</button>
       </div>
       <div class="sheet-body" id="threads-body"></div>
+    </div>
+  </div>
+
+  <!-- Long-press (or right-click) a note to act on it: pin, file, or delete.
+       Friendlier on a phone than a tiny trash icon. -->
+  <div class="sheet-over notemenu-over" id="notemenu">
+    <div class="notemenu">
+      <div class="notemenu-title" id="notemenu-title"></div>
+      <button class="notemenu-item" id="nm-pin"><span class="nm-ico">📌</span><span id="nm-pin-label">Pin</span></button>
+      <button class="notemenu-item" id="nm-folder"><span class="nm-ico">📁</span><span id="nm-folder-label">Move to folder</span></button>
+      <button class="notemenu-item danger" id="nm-delete"><span class="nm-ico">🗑</span><span id="nm-delete-label">Delete</span></button>
+      <button class="notemenu-item cancel" id="nm-cancel">Cancel</button>
     </div>
   </div>
 
@@ -720,6 +814,10 @@
           <button class="themebtn" id="view-folders"><span id="view-folders-label">Folders</span></button>
         </div>
         <p class="set-hint" id="set-folder-hint">To file a note, open it and type a folder name in its header.</p>
+        <div class="set-row">
+          <span class="set-label" id="set-account">Account</span>
+          <button class="themebtn" id="logout"><span id="logout-label">Log out</span></button>
+        </div>
       </div>
     </div>
   </div>
@@ -822,6 +920,24 @@
         copied: "Copied to clipboard",
         cantShare: "Couldn't share — ",
         sharedBy: "Unknotted by Unknot",
+        authWelcome: "Welcome to Unknot",
+        authWelcomeBack: "Welcome back",
+        authSubNew: "Make an account — your notes stay yours.",
+        authSubReturning: "Sign in to your notes.",
+        authCreate: "Create account",
+        authLogin: "Log in",
+        authHaveAccount: "Already have an account?",
+        authNoAccount: "New here?",
+        authAbout: "What is Unknot?",
+        authUsername: "Username",
+        authPassword: "Password",
+        authFill: "Enter a username and password.",
+        authShortPw: "Password needs at least 6 characters.",
+        authFailed: "Something went wrong. Try again.",
+        logout: "Log out",
+        account: "Account",
+        menuFolder: "Move to folder",
+        menuCancel: "Cancel",
         grouping: "Sorting your notes by topic…",
         needToGroup: (n) => `Write ${n} more note${n === 1 ? "" : "s"} and I'll sort them into topics`,
         back: "‹ Notes",
@@ -882,6 +998,24 @@
         copied: "نُسخ إلى الحافظة",
         cantShare: "تعذّرت المشاركة — ",
         sharedBy: "بواسطة تطبيق Unknot",
+        authWelcome: "أهلاً بك في Unknot",
+        authWelcomeBack: "أهلاً بعودتك",
+        authSubNew: "أنشئ حساباً — ملاحظاتك تبقى لك وحدك.",
+        authSubReturning: "سجّل الدخول إلى ملاحظاتك.",
+        authCreate: "إنشاء حساب",
+        authLogin: "تسجيل الدخول",
+        authHaveAccount: "لديك حساب بالفعل؟",
+        authNoAccount: "جديد هنا؟",
+        authAbout: "ما هو Unknot؟",
+        authUsername: "اسم المستخدم",
+        authPassword: "كلمة المرور",
+        authFill: "أدخل اسم مستخدم وكلمة مرور.",
+        authShortPw: "كلمة المرور تحتاج ٦ أحرف على الأقل.",
+        authFailed: "حدث خطأ ما. حاول مجدداً.",
+        logout: "تسجيل الخروج",
+        account: "الحساب",
+        menuFolder: "نقل إلى مجلد",
+        menuCancel: "إلغاء",
         grouping: "أرتّب ملاحظاتك حسب الموضوع…",
         needToGroup: (n) => `اكتب ${n} ملاحظة أخرى وسأرتّبها في مواضيع`,
         back: "الملاحظات ›",
@@ -929,6 +1063,37 @@
 
     const $ = (id) => document.getElementById(id);
     const esc = (s) => s.replace(/[&<>]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;" }[c]));
+
+    /* ---------- auth: token on every /api call ----------
+       Wrapping fetch means the dozens of existing fetch() calls become
+       authenticated automatically, and any 401 (expired/cleared token) drops
+       the person back to the sign-in screen instead of erroring silently. */
+    const TOKEN_KEY = "unknot-token";
+    let authToken = null;
+    try { authToken = localStorage.getItem(TOKEN_KEY); } catch (e) {}
+    const _fetch = window.fetch.bind(window);
+    window.fetch = (url, opts = {}) => {
+      const u = typeof url === "string" ? url : (url && url.url) || "";
+      if (u.startsWith("/api")) {
+        const headers = Object.assign({}, opts.headers,
+          authToken ? { Authorization: "Bearer " + authToken } : {});
+        return _fetch(url, Object.assign({}, opts, { headers })).then(r => {
+          if (r.status === 401) onAuthLost();
+          return r;
+        });
+      }
+      return _fetch(url, opts);
+    };
+    function setToken(tok) {
+      authToken = tok;
+      try { tok ? localStorage.setItem(TOKEN_KEY, tok) : localStorage.removeItem(TOKEN_KEY); } catch (e) {}
+    }
+    let booted = false;
+    function onAuthLost() {
+      if (!authToken && !booted) return;   // already on the sign-in screen
+      setToken(null);
+      location.reload();                    // simplest clean reset back to the gate
+    }
     // strip checklist markers for previews: "- [x] milk" -> "✓ milk", "- [ ] eggs" -> "○ eggs"
     const clean = (line) => line.replace(/^\s*- \[( |x|X)\] ?/, (_, c) =>
       c.trim().toLowerCase() === "x" ? "✓ " : "○ ");
@@ -1686,6 +1851,9 @@
       $("set-organize").textContent = T("organize");
       $("view-folders-label").textContent = T("sortFolders");
       $("set-folder-hint").textContent = T("folderHint");
+      $("set-account").textContent = T("account");
+      $("logout-label").textContent = T("logout");
+      if ($("auth") && !$("auth").hidden) applyAuthText();
       $("pin").title = current.pinned ? T("unpin") : T("pin");
       $("back").textContent = T("back");
       document.querySelector('[data-tab="note"]').textContent = T("tabNote");
@@ -1734,6 +1902,7 @@
     $("settings").addEventListener("click", (e) => { if (e.target === $("settings")) closeSettings(); });
     // "Folders" here switches the list into folder-grouped view, then steps aside
     $("view-folders").addEventListener("click", () => { closeSettings(); setSortMode("folders"); });
+    $("logout").addEventListener("click", logout);
     // file the note on Enter or when you click away; picking from the datalist fires change
     $("folder").addEventListener("change", saveFolder);
     $("folder").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); $("folder").blur(); } });
@@ -1742,33 +1911,109 @@
     $("threads-btn").addEventListener("click", openThreads);
     $("threads-close").addEventListener("click", closeThreads);
     $("threads").addEventListener("click", (e) => { if (e.target === $("threads")) closeThreads(); });
-    addEventListener("keydown", (e) => { if (e.key === "Escape") { closeThreads(); closeSettings(); } });
+    addEventListener("keydown", (e) => { if (e.key === "Escape") { closeThreads(); closeSettings(); closeNoteMenu(); } });
     document.querySelectorAll(".tab").forEach(t =>
       t.addEventListener("click", () => showTab(t.dataset.tab)));
 
+    // delete any note (by id) with an Undo offer — used by the trash icon and
+    // the long-press menu alike
+    async function deleteNoteById(id) {
+      const doomed = allNotes.find(n => n.id === id);
+      const snap = doomed ? { content: doomed.content, analysis: doomed.analysis, folder: doomed.folder, pinned: doomed.pinned } : null;
+      await fetch("/api/notes/" + id, { method: "DELETE" });
+      if (id === current.id) newNote();
+      await loadList();
+      if (snap) say(T("deleted"), false, () => restoreNote(snap));
+    }
+
+    // pin/unpin any note without having to open it first
+    async function pinById(id, pinned) {
+      try {
+        await api("PUT", "/api/notes/" + id + "/pin", { pinned });
+        if (id === current.id) { current.pinned = pinned; syncFolderInput(); }
+        await loadList();
+      } catch (e) { say(T("cantSave") + e.message, true); }
+    }
+
     $("history").addEventListener("click", async (e) => {
       const del = e.target.closest("[data-del]");
-      if (del) {
-        e.stopPropagation();
-        const id = Number(del.dataset.del);
-        const doomed = allNotes.find(n => n.id === id);
-        const snap = doomed ? { content: doomed.content, analysis: doomed.analysis, folder: doomed.folder, pinned: doomed.pinned } : null;
-        await fetch("/api/notes/" + id, { method: "DELETE" });
-        if (id === current.id) newNote();
-        await loadList();
-        if (snap) say(T("deleted"), false, () => restoreNote(snap));
-        return;
-      }
+      if (del) { e.stopPropagation(); await deleteNoteById(Number(del.dataset.del)); return; }
       const card = e.target.closest(".note-card");
       if (card) openNote(Number(card.dataset.id));
     });
 
-    // don't lose a thought on a fast tab-close
+    /* ---------- long-press / right-click menu ---------- */
+    let menuNoteId = null, pressTimer = null, pressXY = null;
+
+    function openNoteMenu(id) {
+      const n = allNotes.find(x => x.id === id);
+      if (!n) return;
+      menuNoteId = id;
+      $("notemenu-title").textContent = firstLine(n.content);
+      $("nm-pin-label").textContent = n.pinned ? T("unpin") : T("pin");
+      $("nm-folder-label").textContent = T("menuFolder");
+      $("nm-delete-label").textContent = T("deleteTip");
+      $("nm-cancel").textContent = T("menuCancel");
+      $("notemenu").classList.add("open");
+      if (navigator.vibrate) try { navigator.vibrate(8); } catch (e) {}
+    }
+    const closeNoteMenu = () => { $("notemenu").classList.remove("open"); menuNoteId = null; };
+
+    $("nm-pin").addEventListener("click", async () => {
+      const n = allNotes.find(x => x.id === menuNoteId); const id = menuNoteId;
+      closeNoteMenu(); if (n) await pinById(id, !n.pinned);
+    });
+    $("nm-folder").addEventListener("click", async () => {
+      const id = menuNoteId; closeNoteMenu();
+      await openNote(id);            // filing happens in the note's header field
+      $("folder").focus();
+    });
+    $("nm-delete").addEventListener("click", async () => {
+      const id = menuNoteId; closeNoteMenu(); await deleteNoteById(id);
+    });
+    $("nm-cancel").addEventListener("click", closeNoteMenu);
+    $("notemenu").addEventListener("click", (e) => { if (e.target === $("notemenu")) closeNoteMenu(); });
+
+    // touch: hold ~500ms without moving; drop it if the finger slides (a scroll)
+    $("history").addEventListener("touchstart", (e) => {
+      const card = e.target.closest(".note-card");
+      if (!card) return;
+      pressXY = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      pressTimer = setTimeout(() => { pressTimer = null; openNoteMenu(Number(card.dataset.id)); }, 500);
+    }, { passive: true });
+    $("history").addEventListener("touchmove", (e) => {
+      if (!pressTimer || !pressXY) return;
+      const dx = e.touches[0].clientX - pressXY.x, dy = e.touches[0].clientY - pressXY.y;
+      if (Math.hypot(dx, dy) > 10) { clearTimeout(pressTimer); pressTimer = null; }
+    }, { passive: true });
+    const cancelPress = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } };
+    $("history").addEventListener("touchend", cancelPress);
+    $("history").addEventListener("touchcancel", cancelPress);
+    // desktop: right-click a card
+    $("history").addEventListener("contextmenu", (e) => {
+      const card = e.target.closest(".note-card");
+      if (!card) return;
+      e.preventDefault();
+      openNoteMenu(Number(card.dataset.id));
+    });
+    // if a long-press opened the menu, swallow the click that follows so it
+    // doesn't also open the note
+    $("history").addEventListener("click", (e) => {
+      if ($("notemenu").classList.contains("open")) { e.stopPropagation(); e.preventDefault(); }
+    }, true);
+
+    // don't lose a thought on a fast tab-close (fetch+keepalive carries the
+    // auth token; sendBeacon can't set headers)
     window.addEventListener("beforeunload", () => {
       const content = editorGet().trim();
       if (content && content !== current.content && current.id) {
-        navigator.sendBeacon?.("/api/notes/" + current.id,
-          new Blob([JSON.stringify({ content })], { type: "application/json" }));
+        try {
+          fetch("/api/notes/" + current.id, {
+            method: "PUT", keepalive: true,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ content }),
+          });
+        } catch (e) {}
       }
     });
 
@@ -1799,6 +2044,7 @@
       const floor = new Promise(r => setTimeout(r, MIN_SPLASH));
 
       await Promise.all([drawn, ready, floor]);
+      booted = true;
       newNote();
       // Language settles behind the splash: an Arabic speaker never sees a
       // flash of English, and the app is already mirrored when it lifts.
@@ -1811,9 +2057,75 @@
       splash.classList.add("done");
     }
 
-    // never strand anyone behind the splash if something goes wrong
-    setTimeout(() => $("splash").classList.add("done"), 4000);
-    boot();
+    /* ---------- sign in / sign up ---------- */
+    let authMode = "signup";   // or "login"
+    function applyAuthText() {
+      const s = authMode === "signup";
+      $("auth-title").textContent = T(s ? "authWelcome" : "authWelcomeBack");
+      $("auth-sub").textContent = T(s ? "authSubNew" : "authSubReturning");
+      $("auth-submit").textContent = T(s ? "authCreate" : "authLogin");
+      $("auth-switch-text").textContent = T(s ? "authHaveAccount" : "authNoAccount");
+      $("auth-switch").textContent = T(s ? "authLogin" : "authCreate");
+      $("auth-about").textContent = T("authAbout");
+      $("auth-user").placeholder = T("authUsername");
+      $("auth-pass").placeholder = T("authPassword");
+      $("auth-pass").autocomplete = s ? "new-password" : "current-password";
+      $("auth-error").textContent = "";
+    }
+    function showAuth() {
+      $("splash").classList.add("done");
+      $("auth").hidden = false;
+      applyAuthText();
+      if (!isPhone()) $("auth-user").focus();
+    }
+    $("auth-switch").addEventListener("click", () => {
+      authMode = authMode === "signup" ? "login" : "signup";
+      applyAuthText();
+    });
+    $("auth-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const username = $("auth-user").value.trim();
+      const password = $("auth-pass").value;
+      if (!username || !password) { $("auth-error").textContent = T("authFill"); return; }
+      if (authMode === "signup" && password.length < 6) { $("auth-error").textContent = T("authShortPw"); return; }
+      $("auth-submit").disabled = true; $("auth-error").textContent = "";
+      try {
+        const r = await fetch("/api/" + authMode, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) { $("auth-error").textContent = data.detail || T("authFailed"); $("auth-submit").disabled = false; return; }
+        setToken(data.token);
+        $("auth").hidden = true;
+        $("auth-pass").value = "";
+        booted = false;
+        boot();
+      } catch (err) {
+        $("auth-error").textContent = T("authFailed"); $("auth-submit").disabled = false;
+      }
+    });
+
+    async function logout() {
+      try { await fetch("/api/logout", { method: "POST" }); } catch (e) {}
+      setToken(null);
+      location.reload();
+    }
+
+    /* ---------- the gate ----------
+       No token, or a token the server rejects, means the sign-in screen — the
+       app and its data never load until someone is actually signed in. */
+    async function start() {
+      applyLang(localStorage.getItem(LANG_KEY) ||
+        ((navigator.language || "en").toLowerCase().startsWith("ar") ? "ar" : "en"));
+      if (authToken) {
+        const ok = await fetch("/api/me").then(r => r.ok).catch(() => false);
+        if (ok) { setTimeout(() => $("splash").classList.add("done"), 4000); boot(); return; }
+        setToken(null);   // stale token
+      }
+      showAuth();
+    }
+    start();
   </script>
 </body>
 </html>

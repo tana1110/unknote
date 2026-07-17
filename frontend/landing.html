@@ -7,6 +7,13 @@
   <meta name="description" content="Most notes apps store your thoughts. Unknot reads them back to you — honestly. It finds what you're assuming, where the logic bends, and what to try instead." />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 
+  <!-- If you're already signed in, skip the pitch and go straight to your
+       notes. First-time (signed-out) visitors see the landing; that's the
+       "landing first" default. Runs before paint to avoid a flash. -->
+  <script>
+    try { if (localStorage.getItem("unknot-token")) location.replace("/app"); } catch (e) {}
+  </script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Lora:ital,wght@0,400;0,500;1,400&family=Amiri:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
